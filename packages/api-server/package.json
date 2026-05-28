@@ -14,7 +14,7 @@
   "dependencies": {
     "@tortuga-os/contracts": "workspace:*",
     "@tortuga-os/core": "workspace:*",
-    "hono": "^4.6.10",
+    "hono": "^4.12.23",
     "zod": "^3.23.8"
   },
   "devDependencies": {

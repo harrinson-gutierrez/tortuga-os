@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.32.1",
+    "@anthropic-ai/sdk": "^0.100.0",
     "@tortuga-os/contracts": "workspace:*",
     "@tortuga-os/domain": "workspace:*"
   },
