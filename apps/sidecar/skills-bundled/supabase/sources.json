@@ -1,0 +1,41 @@
+{
+  "name": "supabase",
+  "version": "1.0.0",
+  "lastUpdated": "2026-05-19",
+  "appliesWhen": "preferredStack contains 'supabase' OR T-000-discovery locks Supabase as backend",
+  "officialRepos": [
+    {
+      "name": "supabase/supabase-flutter",
+      "url": "https://github.com/supabase/supabase-flutter",
+      "why": "Official Flutter SDK v2. Auth, Realtime, Storage examples."
+    },
+    {
+      "name": "supabase/supabase-js",
+      "url": "https://github.com/supabase/supabase-js",
+      "why": "Official JS/TS SDK v2 for web / Edge clients."
+    },
+    {
+      "name": "supabase/realtime",
+      "url": "https://github.com/supabase/realtime",
+      "why": "Realtime server source: broadcast / presence / postgres_changes semantics."
+    },
+    {
+      "name": "supabase/cli",
+      "url": "https://github.com/supabase/cli",
+      "why": "CLI source. Migration / db reset / edge functions deploy reference."
+    },
+    {
+      "name": "lyqht/awesome-supabase",
+      "url": "https://github.com/lyqht/awesome-supabase",
+      "why": "Curated index of starters, plugins, examples by community."
+    }
+  ],
+  "officialDocs": [
+    "https://supabase.com/docs/guides/database/postgres/row-level-security",
+    "https://supabase.com/docs/guides/deployment/database-migrations",
+    "https://supabase.com/docs/guides/auth/sessions",
+    "https://supabase.com/docs/guides/functions",
+    "https://supabase.com/docs/guides/storage/security/access-control",
+    "https://supabase.com/docs/guides/troubleshooting/rls-performance-and-best-practices-Z5Jjwv"
+  ]
+}

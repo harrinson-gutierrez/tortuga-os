@@ -1,0 +1,17 @@
+{
+  "$schema": "./docs/EVIDENCE-SCHEMA.md",
+  "closer": {
+    "maxRetries": 3
+  },
+  "verifier": {
+    "version": "1.0.0",
+    "gates": ["G1", "G3", "G6"]
+  },
+  "stacks": {
+    "flutter": { "supported": true },
+    "nextjs": { "supported": true },
+    "vite-react": { "supported": true },
+    "angular": { "supported": true },
+    "astro": { "supported": true }
+  }
+}

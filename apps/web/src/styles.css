@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html,
+  body,
+  #root {
+    margin: 0;
+    padding: 0;
+    min-height: 100%;
+    @apply bg-bg text-text font-sans;
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  ::selection {
+    background: rgba(244, 78, 92, 0.35);
+  }
+
+  button {
+    font-family: inherit;
+  }
+
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible {
+    @apply outline-none ring-1 ring-brand/60;
+  }
+}
+
+@layer components {
+  .eyebrow {
+    @apply text-[11px] uppercase tracking-eyebrow font-medium text-text-muted;
+  }
+
+  .display-1 {
+    @apply font-display font-medium text-text tracking-tighter-2;
+  }
+
+  .surface-card {
+    @apply bg-surface border border-border rounded-card;
+  }
+
+  .surface-card-hover {
+    @apply hover:bg-surface-2 hover:border-border-strong transition-colors;
+  }
+}

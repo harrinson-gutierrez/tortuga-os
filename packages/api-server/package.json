@@ -1,0 +1,24 @@
+{
+  "name": "@tortuga-os/api-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tortuga-os/contracts": "workspace:*",
+    "@tortuga-os/core": "workspace:*",
+    "hono": "^4.6.10",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@tortuga-os/tsconfig": "workspace:*",
+    "@types/node": "^22.10.0"
+  }
+}

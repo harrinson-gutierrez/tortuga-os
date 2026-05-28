@@ -1,0 +1,46 @@
+{
+  "name": "iac",
+  "version": "1.0.0",
+  "lastUpdated": "2026-05-22",
+  "appliesWhen": "any infra agent runs, OR the project provisions cloud resources",
+  "officialRepos": [
+    {
+      "name": "aws/aws-cdk",
+      "url": "https://github.com/aws/aws-cdk",
+      "why": "AWS CDK source + construct library. Default IaC for the TypeScript/AWS stack."
+    },
+    {
+      "name": "cdk-patterns/serverless",
+      "url": "https://github.com/cdk-patterns/serverless",
+      "why": "Well-architected CDK patterns (TS/Python) for Lambda, API GW, DynamoDB, EventBridge."
+    },
+    {
+      "name": "cdklabs/cdk-nag",
+      "url": "https://github.com/cdklabs/cdk-nag",
+      "why": "Fails CDK synth on insecure/non-compliant resources (AWS Solutions, HIPAA, PCI rule packs)."
+    },
+    {
+      "name": "hashicorp/terraform",
+      "url": "https://github.com/hashicorp/terraform",
+      "why": "Terraform core. Use for multi-cloud / portability requirements."
+    },
+    {
+      "name": "terraform-aws-modules",
+      "url": "https://github.com/terraform-aws-modules",
+      "why": "Community-maintained, production-grade reusable AWS modules (vpc, rds, eks, lambda, s3)."
+    },
+    {
+      "name": "aws-ia",
+      "url": "https://github.com/aws-ia",
+      "why": "AWS-published Terraform modules and reference architectures."
+    }
+  ],
+  "officialDocs": [
+    "https://docs.aws.amazon.com/cdk/v2/guide/home.html",
+    "https://docs.aws.amazon.com/cdk/v2/guide/best-practices.html",
+    "https://constructs.dev/",
+    "https://developer.hashicorp.com/terraform/docs",
+    "https://developer.hashicorp.com/terraform/language/state/remote",
+    "https://developer.hashicorp.com/terraform/language/modules/develop"
+  ]
+}

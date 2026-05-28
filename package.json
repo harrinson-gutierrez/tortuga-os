@@ -1,0 +1,44 @@
+{
+  "name": "tortuga-os",
+  "version": "0.1.2",
+  "private": true,
+  "license": "BUSL-1.1",
+  "author": "Harrinson Gutierrez C. <hgutieco@gmail.com>",
+  "description": "Tortuga OS — Desktop agentic ERP where AI agents do the work.",
+  "packageManager": "pnpm@10.6.5",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "concurrently -n sidecar,web -c yellow,cyan \"pnpm --filter @tortuga/sidecar dev\" \"pnpm --filter @tortuga/web dev\"",
+    "dev:tunnel": "concurrently --kill-others -n web,tunnel -c cyan,magenta \"pnpm --filter @tortuga/web dev\" \"ngrok http 5173\"",
+    "build": "pnpm -r build",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "typecheck": "pnpm -r typecheck",
+    "boundaries": "depcruise --config .dependency-cruiser.cjs packages apps",
+    "boundaries:graph": "depcruise --config .dependency-cruiser.cjs --output-type dot packages apps | dot -T svg > boundaries.svg",
+    "test": "vitest run --config tests/vitest.config.ts",
+    "test:watch": "vitest --config tests/vitest.config.ts",
+    "db:generate": "pnpm --filter @tortuga-os/storage-sqlite generate",
+    "db:migrate": "pnpm --filter @tortuga-os/storage-sqlite migrate",
+    "seed": "pnpm --filter @tortuga/sidecar seed",
+    "tauri": "pnpm --filter @tortuga/desktop tauri",
+    "verify-task": "node --experimental-strip-types scripts/verify-task.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@tortuga-os/depcruise-config": "workspace:*",
+    "@types/better-sqlite3": "^7.6.12",
+    "better-sqlite3": "^11.5.0",
+    "concurrently": "^9.1.0",
+    "dependency-cruiser": "^16.7.0",
+    "drizzle-orm": "^0.36.4",
+    "sharp": "^0.34.5",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["@biomejs/biome", "better-sqlite3", "esbuild"]
+  }
+}

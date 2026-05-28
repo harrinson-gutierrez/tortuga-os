@@ -1,0 +1,51 @@
+{
+  "name": "testing",
+  "version": "1.0.0",
+  "lastUpdated": "2026-05-22",
+  "appliesWhen": "agent role is qa-reviewer OR any task that ships code with logic",
+  "officialRepos": [
+    {
+      "name": "vitest-dev/vitest",
+      "url": "https://github.com/vitest-dev/vitest",
+      "why": "Recommended unit/component runner for TS/JS. Fake timers, parametrized it.each, coverage."
+    },
+    {
+      "name": "microsoft/playwright",
+      "url": "https://github.com/microsoft/playwright",
+      "why": "E2E framework. Auto-wait, role locators, trace viewer, network interception."
+    },
+    {
+      "name": "testcontainers/testcontainers-node",
+      "url": "https://github.com/testcontainers/testcontainers-node",
+      "why": "Real Postgres/services in Docker for integration tests that need true SQL semantics."
+    },
+    {
+      "name": "mswjs/msw",
+      "url": "https://github.com/mswjs/msw",
+      "why": "Network-boundary mocking for deterministic tests without hitting real HTTP."
+    },
+    {
+      "name": "felangel/mocktail",
+      "url": "https://github.com/felangel/mocktail",
+      "why": "Null-safe test doubles for Flutter/Dart unit and widget tests."
+    },
+    {
+      "name": "stryker-mutator/stryker-js",
+      "url": "https://github.com/stryker-mutator/stryker-js",
+      "why": "Mutation testing — the real measure of test quality beyond coverage %."
+    },
+    {
+      "name": "pactflow/pact-js",
+      "url": "https://github.com/pact-foundation/pact-js",
+      "why": "Consumer-driven contract testing between services."
+    }
+  ],
+  "officialDocs": [
+    "https://vitest.dev/guide/",
+    "https://playwright.dev/docs/intro",
+    "https://testcontainers.com/",
+    "https://docs.flutter.dev/testing/integration-tests",
+    "https://docs.nestjs.com/fundamentals/testing",
+    "https://martinfowler.com/articles/practical-test-pyramid.html"
+  ]
+}

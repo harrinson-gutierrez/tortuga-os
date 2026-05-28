@@ -1,0 +1,19 @@
+{
+  "name": "figma",
+  "version": "1.0.0",
+  "lastUpdated": "2026-05-19",
+  "appliesWhen": "Any agent with Figma MCP tools wired (product-designer, runtime-smoke). Also when project.figmaFileUrl is set.",
+  "officialRepos": [
+    {
+      "name": "GLips/Figma-Context-MCP",
+      "url": "https://github.com/GLips/Figma-Context-MCP",
+      "why": "Community read-only Figma MCP (figma-developer-mcp). Reference implementation."
+    }
+  ],
+  "officialDocs": [
+    "https://developers.figma.com/docs/figma-mcp-server/",
+    "https://help.figma.com/hc/en-us/articles/32132100833559-Guide-to-the-Figma-MCP-server",
+    "https://www.figma.com/developers/api",
+    "https://www.figma.com/blog/five-ways-to-structure-your-workflow-with-pages-in-figma/"
+  ]
+}

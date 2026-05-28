@@ -1,0 +1,41 @@
+{
+  "name": "rest-api",
+  "version": "1.0.0",
+  "lastUpdated": "2026-05-22",
+  "appliesWhen": "any backend agent building/changing HTTP endpoints OR preferredStack implies a REST backend (nest/express/api)",
+  "officialRepos": [
+    {
+      "name": "OAI/OpenAPI-Specification",
+      "url": "https://github.com/OAI/OpenAPI-Specification",
+      "why": "OpenAPI 3.1 spec — the contract-first source of truth for REST APIs."
+    },
+    {
+      "name": "microsoft/api-guidelines",
+      "url": "https://github.com/microsoft/api-guidelines",
+      "why": "Battle-tested REST design conventions: naming, versioning, errors, pagination."
+    },
+    {
+      "name": "zalando/restful-api-guidelines",
+      "url": "https://github.com/zalando/restful-api-guidelines",
+      "why": "Detailed, opinionated REST guidelines used at scale (pagination, problem+json)."
+    },
+    {
+      "name": "stripe/openapi",
+      "url": "https://github.com/stripe/openapi",
+      "why": "Stripe's published OpenAPI specs; gold-standard idempotency, versioning, errors."
+    },
+    {
+      "name": "json-api/json-api",
+      "url": "https://github.com/json-api/json-api",
+      "why": "JSON:API conventions for filtering, sparse fieldsets, includes, pagination."
+    }
+  ],
+  "officialDocs": [
+    "https://www.rfc-editor.org/rfc/rfc9457",
+    "https://www.rfc-editor.org/rfc/rfc7807",
+    "https://spec.openapis.org/oas/v3.1.0",
+    "https://datatracker.ietf.org/doc/html/rfc7231",
+    "https://stripe.com/docs/api",
+    "https://cloud.google.com/apis/design"
+  ]
+}

@@ -1,0 +1,1 @@
+ALTER TABLE `projects` ADD `disabled_skills_json` text DEFAULT '[]' NOT NULL;

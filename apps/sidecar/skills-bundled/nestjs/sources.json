@@ -1,0 +1,51 @@
+{
+  "name": "nestjs",
+  "version": "1.0.0",
+  "lastUpdated": "2026-05-22",
+  "appliesWhen": "preferredStack matches /nest|nestjs/i OR T-000-discovery locks NestJS as the backend",
+  "officialRepos": [
+    {
+      "name": "nestjs/nest",
+      "url": "https://github.com/nestjs/nest",
+      "why": "Official NestJS framework source and reference for the request lifecycle."
+    },
+    {
+      "name": "nestjs/typescript-starter",
+      "url": "https://github.com/nestjs/typescript-starter",
+      "why": "Canonical project scaffold (config, testing, lint) maintained by the core team."
+    },
+    {
+      "name": "nestjs/awesome-nestjs",
+      "url": "https://github.com/nestjs/awesome-nestjs",
+      "why": "Curated list including clean/hexagonal architecture sample repos."
+    },
+    {
+      "name": "typestack/class-validator",
+      "url": "https://github.com/typestack/class-validator",
+      "why": "Decorator-based DTO validation used with the global ValidationPipe."
+    },
+    {
+      "name": "colinhacks/zod",
+      "url": "https://github.com/colinhacks/zod",
+      "why": "Schema validation for DTOs and env-config validation at boot."
+    },
+    {
+      "name": "typeorm/typeorm",
+      "url": "https://github.com/typeorm/typeorm",
+      "why": "Data-mapper ORM that fits the repository port/adapter pattern."
+    },
+    {
+      "name": "prisma/prisma",
+      "url": "https://github.com/prisma/prisma",
+      "why": "Schema-first ORM alternative; wrap behind a repository port."
+    }
+  ],
+  "officialDocs": [
+    "https://docs.nestjs.com/",
+    "https://docs.nestjs.com/fundamentals/custom-providers",
+    "https://docs.nestjs.com/techniques/validation",
+    "https://docs.nestjs.com/exception-filters",
+    "https://docs.nestjs.com/techniques/configuration",
+    "https://docs.nestjs.com/fundamentals/testing"
+  ]
+}

@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# Husky hook — runs lint + typecheck over staged files.
+# To enable Husky in this repo, see the instructions in commitlint.config.cjs.
+pnpm exec lint-staged

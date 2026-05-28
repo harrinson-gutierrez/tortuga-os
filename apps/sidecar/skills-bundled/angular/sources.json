@@ -1,0 +1,42 @@
+{
+  "name": "angular",
+  "version": "1.0.0",
+  "lastUpdated": "2026-05-22",
+  "appliesWhen": "preferredStack matches /angular/i OR T-000-discovery locks Angular as primary frontend",
+  "officialRepos": [
+    {
+      "name": "angular/angular",
+      "url": "https://github.com/angular/angular",
+      "why": "Official Angular framework source: signals, control flow, standalone APIs."
+    },
+    {
+      "name": "angular/components",
+      "url": "https://github.com/angular/components",
+      "why": "Angular Material + CDK; reference for accessible, OnPush standalone components."
+    },
+    {
+      "name": "ngrx/platform",
+      "url": "https://github.com/ngrx/platform",
+      "why": "NgRx SignalStore for structured signal-based state management."
+    },
+    {
+      "name": "analogjs/analog",
+      "url": "https://github.com/analogjs/analog",
+      "why": "Modern Vite/SSR meta-framework for Angular with current standalone patterns."
+    },
+    {
+      "name": "testing-library/angular-testing-library",
+      "url": "https://github.com/testing-library/angular-testing-library",
+      "why": "Behavior-focused component testing aligned with modern Angular."
+    }
+  ],
+  "officialDocs": [
+    "https://angular.dev/",
+    "https://angular.dev/guide/signals",
+    "https://angular.dev/guide/components",
+    "https://angular.dev/guide/templates/control-flow",
+    "https://angular.dev/guide/http",
+    "https://angular.dev/guide/forms/reactive-forms",
+    "https://angular.dev/guide/di"
+  ]
+}

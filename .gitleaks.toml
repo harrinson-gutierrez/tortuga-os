@@ -1,0 +1,46 @@
+# gitleaks config for Tortuga OS
+# Docs: https://github.com/gitleaks/gitleaks
+
+title = "Tortuga OS gitleaks config"
+
+[extend]
+# Inherit the default rule set (covers AWS, GCP, Slack, Stripe, GH tokens, etc.)
+useDefault = true
+
+# ─────────── Allowlist ───────────
+# Known false positives in this repo. Keep the list short and justified.
+
+[allowlist]
+description = "Known false positives in docs and synthetic seed data"
+paths = [
+  '''pnpm-lock\.yaml''',
+  # Synthetic seed data: not real secrets
+  '''apps/sidecar/src/seed/.*''',
+  # Docs/configs that mention placeholders ("YOUR_API_KEY", etc.)
+  '''docs/.*''',
+  '''README\.md''',
+  '''SECURITY\.md''',
+]
+
+# Literal patterns that are allowed (useful for documentation placeholders)
+regexes = [
+  '''YOUR_[A-Z_]+_KEY''',
+  '''<your-token-here>''',
+  '''sk-ant-api03-XXXX''',
+  # Committable placeholder showing the MCP secret format
+  '''TORTUGA_SIDECAR_SECRET=<random-uuid>''',
+]
+
+# ─────────── Extra Tortuga-specific rules ───────────
+
+[[rules]]
+id = "tortuga-anthropic-api-key"
+description = "Anthropic API key (sk-ant-...)"
+regex = '''sk-ant-api03-[A-Za-z0-9_\-]{40,}'''
+tags = ["key", "anthropic"]
+
+[[rules]]
+id = "tortuga-jwt-style"
+description = "Generic JWT (eyJ...)"
+regex = '''eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}'''
+tags = ["jwt"]

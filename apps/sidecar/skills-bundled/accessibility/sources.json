@@ -1,0 +1,46 @@
+{
+  "name": "accessibility",
+  "version": "1.0.0",
+  "lastUpdated": "2026-05-22",
+  "appliesWhen": "agent role is product-designer OR any UI task (web, Angular, or Flutter)",
+  "officialRepos": [
+    {
+      "name": "w3c/wcag",
+      "url": "https://github.com/w3c/wcag",
+      "why": "Source of WCAG 2.2 success criteria, understanding docs, and techniques."
+    },
+    {
+      "name": "w3c/aria-practices",
+      "url": "https://github.com/w3c/aria-practices",
+      "why": "WAI-ARIA Authoring Practices Guide — correct keyboard + ARIA patterns for custom widgets."
+    },
+    {
+      "name": "dequelabs/axe-core",
+      "url": "https://github.com/dequelabs/axe-core",
+      "why": "Automated a11y rules engine for CI; catches ~30-40% of issues, complements manual testing."
+    },
+    {
+      "name": "angular/components",
+      "url": "https://github.com/angular/components",
+      "why": "Angular CDK a11y module: FocusTrap, LiveAnnouncer, FocusMonitor; accessible Material components."
+    },
+    {
+      "name": "flutter/flutter",
+      "url": "https://github.com/flutter/flutter",
+      "why": "Semantics/MergeSemantics/ExcludeSemantics widgets and accessibility tooling for Flutter UI."
+    },
+    {
+      "name": "GoogleChrome/lighthouse",
+      "url": "https://github.com/GoogleChrome/lighthouse",
+      "why": "Accessibility audit integrated into CI/devtools for regression catching."
+    }
+  ],
+  "officialDocs": [
+    "https://www.w3.org/TR/WCAG22/",
+    "https://www.w3.org/WAI/ARIA/apg/",
+    "https://www.w3.org/WAI/fundamentals/accessibility-principles/",
+    "https://material.angular.io/cdk/a11y/overview",
+    "https://docs.flutter.dev/ui/accessibility-and-internationalization/accessibility",
+    "https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA"
+  ]
+}

@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# Husky hook — validates the commit message with commitlint.
+# To enable Husky in this repo, see the instructions in commitlint.config.cjs.
+pnpm exec commitlint --edit "$1"

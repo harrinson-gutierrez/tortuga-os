@@ -1,0 +1,156 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # weekly on Mondays at 09:00 UTC
+    - cron: "0 9 * * 1"
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write
+
+env:
+  NODE_VERSION: "22"
+  PNPM_VERSION: "10.6.5"
+
+jobs:
+  # ─────────────── Static analysis ───────────────
+  semgrep:
+    name: Semgrep SAST
+    runs-on: ubuntu-latest
+    container:
+      image: returntocorp/semgrep
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Semgrep
+        run: |
+          semgrep ci \
+            --config=p/owasp-top-ten \
+            --config=p/typescript \
+            --config=p/javascript \
+            --config=p/security-audit \
+            --config=p/secrets \
+            --error \
+            --sarif --output=semgrep.sarif
+        env:
+          SEMGREP_RULES: p/owasp-top-ten p/typescript p/javascript p/security-audit p/secrets
+
+      - name: Upload Semgrep SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+        continue-on-error: true
+
+  # ─────────────── CodeQL ───────────────
+  codeql:
+    name: CodeQL (JS/TS)
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          queries: security-and-quality
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"
+
+  # ─────────────── Secret scanning ───────────────
+  gitleaks:
+    name: Gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+
+  # ─────────────── Dependency vulnerabilities ───────────────
+  pnpm-audit:
+    name: pnpm audit (high+)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install (frozen)
+        run: pnpm install --frozen-lockfile
+
+      - name: Audit
+        run: pnpm audit --audit-level=high
+
+  # ─────────────── License policy ───────────────
+  license-check:
+    name: License policy (deny GPL/AGPL/SSPL)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install (frozen)
+        run: pnpm install --frozen-lockfile
+
+      - name: Install license-checker
+        run: pnpm dlx license-checker-rseidelsohn --version || npm i -g license-checker-rseidelsohn
+
+      - name: Check production licenses
+        run: |
+          set -eu
+          DENIED='GPL;AGPL;LGPL;SSPL;OSL;EPL;CDDL;CPAL;EUPL'
+          npx --yes license-checker-rseidelsohn \
+            --production \
+            --excludePackages "tortuga-os" \
+            --failOn "$DENIED" \
+            --csv > licenses.csv
+          echo "Top licenses found:"
+          cut -d',' -f3 licenses.csv | sort | uniq -c | sort -rn | head -20
+
+      - name: Upload licenses CSV
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: licenses-csv
+          path: licenses.csv
+          retention-days: 30

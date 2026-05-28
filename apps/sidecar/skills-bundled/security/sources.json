@@ -1,0 +1,46 @@
+{
+  "name": "security",
+  "version": "1.0.0",
+  "lastUpdated": "2026-05-22",
+  "appliesWhen": "agent role is security-reviewer OR any task touching auth, data, secrets, or external input",
+  "officialRepos": [
+    {
+      "name": "OWASP/ASVS",
+      "url": "https://github.com/OWASP/ASVS",
+      "why": "Application Security Verification Standard — concrete, testable security requirements by level."
+    },
+    {
+      "name": "OWASP/CheatSheetSeries",
+      "url": "https://github.com/OWASP/CheatSheetSeries",
+      "why": "Authoritative how-to for injection, authn, JWT, CSRF, SSRF, secrets, RLS-style isolation."
+    },
+    {
+      "name": "colinhacks/zod",
+      "url": "https://github.com/colinhacks/zod",
+      "why": "Allowlist input validation at the trust boundary; .strict() rejects unknown fields."
+    },
+    {
+      "name": "cure53/DOMPurify",
+      "url": "https://github.com/cure53/DOMPurify",
+      "why": "Vetted HTML sanitizer for the rare case untrusted rich text must be rendered."
+    },
+    {
+      "name": "gitleaks/gitleaks",
+      "url": "https://github.com/gitleaks/gitleaks",
+      "why": "Pre-commit and CI secret scanning to keep credentials out of VCS."
+    },
+    {
+      "name": "google/osv-scanner",
+      "url": "https://github.com/google/osv-scanner",
+      "why": "Dependency/supply-chain vulnerability scanning gated in CI."
+    }
+  ],
+  "officialDocs": [
+    "https://owasp.org/Top10/",
+    "https://cheatsheetseries.owasp.org/",
+    "https://owasp.org/www-project-application-security-verification-standard/",
+    "https://www.postgresql.org/docs/current/ddl-rowsecurity.html",
+    "https://docs.aws.amazon.com/secretsmanager/latest/userguide/intro.html",
+    "https://datatracker.ietf.org/doc/html/rfc8725"
+  ]
+}

@@ -1,0 +1,1 @@
+ALTER TABLE `projects` ADD `stack` text DEFAULT 'unknown' NOT NULL;

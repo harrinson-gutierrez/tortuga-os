@@ -1,0 +1,9 @@
+{
+  "extends": "@tortuga-os/tsconfig/browser.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "noEmit": true
+  },
+  "include": ["src/**/*"]
+}

@@ -1,0 +1,108 @@
+version: 2
+updates:
+  # ─────────── npm (root + workspaces) ───────────
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/Bogota"
+    open-pull-requests-limit: 10
+    versioning-strategy: increase
+    labels:
+      - "dependencies"
+      - "javascript"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      # Patches and minors together per ecosystem → less noise, easy to merge
+      production-minor-patch:
+        applies-to: version-updates
+        dependency-type: production
+        update-types:
+          - "minor"
+          - "patch"
+      development-minor-patch:
+        applies-to: version-updates
+        dependency-type: development
+        update-types:
+          - "minor"
+          - "patch"
+      tauri-ecosystem:
+        applies-to: version-updates
+        patterns:
+          - "@tauri-apps/*"
+          - "tauri-plugin-*"
+      tanstack-ecosystem:
+        applies-to: version-updates
+        patterns:
+          - "@tanstack/*"
+      drizzle-ecosystem:
+        applies-to: version-updates
+        patterns:
+          - "drizzle-*"
+      hono-ecosystem:
+        applies-to: version-updates
+        patterns:
+          - "hono"
+          - "@hono/*"
+      mcp-ecosystem:
+        applies-to: version-updates
+        patterns:
+          - "@modelcontextprotocol/*"
+    # Majors stay as individual PRs — manual review required.
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
+        # Exception: security updates ARE allowed to bump majors
+    # Security updates: any severity, any type, ungrouped
+    # (Dependabot marks them as "security" automatically)
+
+  # ─────────── Cargo (Tauri Rust shell) ───────────
+  - package-ecosystem: "cargo"
+    directory: "/apps/desktop/src-tauri"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/Bogota"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "rust"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      tauri-rust:
+        applies-to: version-updates
+        patterns:
+          - "tauri"
+          - "tauri-*"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
+
+  # ─────────── GitHub Actions ───────────
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "ci(deps)"
+      include: "scope"
+    groups:
+      gh-actions-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"

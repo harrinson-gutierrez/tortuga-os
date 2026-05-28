@@ -1,0 +1,45 @@
+{
+  "name": "git-workflow",
+  "version": "1.0.0",
+  "lastUpdated": "2026-05-22",
+  "appliesWhen": "agent role is senior-dev OR any task that commits code",
+  "officialRepos": [
+    {
+      "name": "conventional-commits/conventionalcommits.org",
+      "url": "https://github.com/conventional-commits/conventionalcommits.org",
+      "why": "The Conventional Commits specification source. Canonical type/scope/breaking-change format."
+    },
+    {
+      "name": "semver/semver",
+      "url": "https://github.com/semver/semver",
+      "why": "Semantic Versioning spec. Defines MAJOR.MINOR.PATCH and pre-release semantics."
+    },
+    {
+      "name": "lint-staged/lint-staged",
+      "url": "https://github.com/lint-staged/lint-staged",
+      "why": "Run linters/formatters on staged files in pre-commit hooks."
+    },
+    {
+      "name": "evilmartians/lefthook",
+      "url": "https://github.com/evilmartians/lefthook",
+      "why": "Fast, language-agnostic Git hooks manager for lint/format/typecheck gates."
+    },
+    {
+      "name": "gitleaks/gitleaks",
+      "url": "https://github.com/gitleaks/gitleaks",
+      "why": "Secret scanning to block credentials/.env from ever being committed."
+    },
+    {
+      "name": "googleapis/release-please",
+      "url": "https://github.com/googleapis/release-please",
+      "why": "Automated changelogs and SemVer bumps driven by Conventional Commits."
+    }
+  ],
+  "officialDocs": [
+    "https://www.conventionalcommits.org/en/v1.0.0/",
+    "https://semver.org/",
+    "https://git-scm.com/book/en/v2",
+    "https://trunkbaseddevelopment.com/",
+    "https://cbea.ms/git-commit/"
+  ]
+}

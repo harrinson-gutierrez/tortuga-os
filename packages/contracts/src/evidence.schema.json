@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tortuga-os.local/schemas/evidence/v1",
+  "title": "Tortuga task evidence",
+  "type": "object",
+  "required": [
+    "task",
+    "project",
+    "stack",
+    "verifierVersion",
+    "startedAt",
+    "finishedAt",
+    "gates",
+    "verdict"
+  ],
+  "properties": {
+    "task": { "type": "string", "pattern": "^T-[0-9]{3,}$" },
+    "project": { "type": "string", "minLength": 1 },
+    "stack": { "enum": ["flutter", "nextjs", "vite-react", "angular", "astro"] },
+    "verifierVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "finishedAt": { "type": "string", "format": "date-time" },
+    "gates": {
+      "type": "object",
+      "properties": {
+        "G1": { "$ref": "#/$defs/gateResult" },
+        "G2": { "$ref": "#/$defs/gateResult" },
+        "G3": { "$ref": "#/$defs/gateResult" },
+        "G4": { "$ref": "#/$defs/gateResult" },
+        "G5": { "$ref": "#/$defs/gateResult" },
+        "G6": { "$ref": "#/$defs/gateResultG6" },
+        "G7": { "$ref": "#/$defs/gateResult" }
+      },
+      "additionalProperties": false
+    },
+    "verdict": { "enum": ["approve", "reject"] },
+    "rejectReason": { "type": "string" },
+    "retryHint": { "type": "string" },
+    "agentOverride": {
+      "type": "object",
+      "required": ["gate", "reason"],
+      "properties": {
+        "gate": { "type": "string" },
+        "reason": { "type": "string" }
+      }
+    }
+  },
+  "$defs": {
+    "gateResult": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "name": { "type": "string" },
+        "status": { "enum": ["pass", "fail", "skipped", "error"] },
+        "command": { "type": "string" },
+        "exitCode": { "type": "integer" },
+        "logPath": { "type": "string" },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "reason": { "type": "string" }
+      }
+    },
+    "gateResultG6": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "name": { "type": "string" },
+        "status": { "enum": ["pass", "fail", "skipped", "error"] },
+        "declared": { "type": "array", "items": { "type": "string" } },
+        "changed": { "type": "array", "items": { "type": "string" } },
+        "missing": { "type": "array", "items": { "type": "string" } },
+        "unexpected": { "type": "array", "items": { "type": "string" } },
+        "logPath": { "type": "string" },
+        "reason": { "type": "string" }
+      }
+    }
+  }
+}

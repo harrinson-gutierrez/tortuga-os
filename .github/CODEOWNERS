@@ -1,0 +1,24 @@
+# Tortuga OS — Code owners
+#
+# Every PR needs at least one approval from a code owner of the path it
+# touches. Today the project is solo, so everything is owned by
+# Harrinson Gutierrez C.
+# When a new maintainer joins, add them on a per-path basis instead of
+# adding them globally.
+
+# Default owner (catch-all).
+*                                       @harrinson-gutierrez
+
+# License, copyright, and anything legal — extra-sensitive.
+/LICENSE                                @harrinson-gutierrez
+/CONTRIBUTING.md                        @harrinson-gutierrez
+/.github/                               @harrinson-gutierrez
+
+# Domain + storage schema — breaking changes here ripple everywhere.
+/packages/domain/                       @harrinson-gutierrez
+/packages/storage-sqlite/               @harrinson-gutierrez
+/packages/contracts/                    @harrinson-gutierrez
+
+# Sidecar entrypoints and security-critical modules.
+/apps/sidecar/src/server.ts             @harrinson-gutierrez
+/apps/sidecar/src/shared/               @harrinson-gutierrez

@@ -1,0 +1,48 @@
+{
+  "name": "aws",
+  "version": "1.0.0",
+  "lastUpdated": "2026-05-22",
+  "appliesWhen": "preferredStack or discovery mentions AWS / Lambda / Cognito / S3 / DynamoDB / API Gateway, OR any infra/deploy agent on an AWS project",
+  "officialRepos": [
+    {
+      "name": "aws-powertools/powertools-lambda-typescript",
+      "url": "https://github.com/aws-powertools/powertools-lambda-typescript",
+      "why": "Idempotency, structured logging, metrics (EMF), tracing, parameters utilities. The default Lambda toolbox for TS."
+    },
+    {
+      "name": "aws-powertools/powertools-lambda-python",
+      "url": "https://github.com/aws-powertools/powertools-lambda-python",
+      "why": "Same utilities for Python Lambdas (idempotency, batch, validation)."
+    },
+    {
+      "name": "aws/aws-sdk-js-v3",
+      "url": "https://github.com/aws/aws-sdk-js-v3",
+      "why": "Modular AWS SDK v3 for Node/Lambda — tree-shakeable clients, presigned URL helpers."
+    },
+    {
+      "name": "aws-amplify/amplify-js",
+      "url": "https://github.com/aws-amplify/amplify-js",
+      "why": "Cognito auth flows (user pools, federated identity, hosted UI) reference for web/mobile clients."
+    },
+    {
+      "name": "aws-samples/serverless-patterns",
+      "url": "https://github.com/aws-samples/serverless-patterns",
+      "why": "Hundreds of vetted API GW / Lambda / DynamoDB / EventBridge integration patterns (CDK + SAM + Terraform)."
+    },
+    {
+      "name": "aws-samples/aws-dynamodb-examples",
+      "url": "https://github.com/aws-samples/aws-dynamodb-examples",
+      "why": "Single-table design and access-pattern modeling examples."
+    }
+  ],
+  "officialDocs": [
+    "https://docs.aws.amazon.com/lambda/latest/dg/best-practices.html",
+    "https://docs.powertools.aws.dev/lambda/typescript/latest/",
+    "https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-vs-rest.html",
+    "https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-user-identity-pools-working-with-aws-lambda-triggers.html",
+    "https://docs.aws.amazon.com/AmazonS3/latest/userguide/PresignedUrlUploadObject.html",
+    "https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/bp-modeling-nosql-B.html",
+    "https://docs.aws.amazon.com/ses/latest/dg/send-email-concepts-process.html",
+    "https://serverlessland.com/"
+  ]
+}

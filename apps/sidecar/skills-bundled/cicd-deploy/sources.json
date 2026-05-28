@@ -1,0 +1,46 @@
+{
+  "name": "cicd-deploy",
+  "version": "1.0.0",
+  "lastUpdated": "2026-05-22",
+  "appliesWhen": "any deploy/delivery agent runs, OR the project needs a pipeline",
+  "officialRepos": [
+    {
+      "name": "aws-actions/configure-aws-credentials",
+      "url": "https://github.com/aws-actions/configure-aws-credentials",
+      "why": "Keyless AWS auth from GitHub Actions via OIDC. The way to authenticate CI to AWS without long-lived keys."
+    },
+    {
+      "name": "actions/cache",
+      "url": "https://github.com/actions/cache",
+      "why": "Dependency / build artifact caching keyed on lockfile hashes."
+    },
+    {
+      "name": "aws-samples/aws-codedeploy-examples",
+      "url": "https://github.com/aws-samples/aws-codedeploy-examples",
+      "why": "appspec.yml + lifecycle hooks for EC2 blue/green and canary deploys with auto-rollback."
+    },
+    {
+      "name": "aws-samples/aws-lambda-deploy",
+      "url": "https://github.com/aws-samples/aws-lambda-deploy",
+      "why": "Lambda versioned aliases + CodeDeploy traffic shifting (canary/linear) with CloudWatch alarm rollback."
+    },
+    {
+      "name": "actions/starter-workflows",
+      "url": "https://github.com/actions/starter-workflows",
+      "why": "Reference GitHub Actions pipeline templates (build/test/deploy) across stacks."
+    },
+    {
+      "name": "codemagic-ci-cd/codemagic-sample-projects",
+      "url": "https://github.com/codemagic-ci-cd/codemagic-sample-projects",
+      "why": "Mobile (Flutter/iOS/Android) build, code signing, and store-publish pipelines."
+    }
+  ],
+  "officialDocs": [
+    "https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services",
+    "https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment",
+    "https://docs.aws.amazon.com/codedeploy/latest/userguide/deployment-configurations.html",
+    "https://docs.aws.amazon.com/lambda/latest/dg/configuration-aliases.html",
+    "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/blue-green.html",
+    "https://docs.codemagic.io/yaml-quick-start/building-a-native-android-app/"
+  ]
+}

@@ -1,0 +1,64 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+dist-bundle/
+build/
+.turbo/
+.cache/
+*.tsbuildinfo
+
+# Tauri
+target/
+**/src-tauri/target/
+**/src-tauri/Cargo.lock
+**/src-tauri/gen/
+
+# Local data — NUNCA commitear el .db ni adjuntos
+data/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.db.*.bak
+*.db-*.bak
+_backup-app-db/
+*.sqlite
+*.sqlite-journal
+
+# Logs
+*.log
+logs/
+install.log
+web.log
+sidecar.log
+web-tc.log
+
+# Editor
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Operator-local tooling (Claude Code config + operator skills used to
+# build Tortuga OS itself). The product ships its own bundled skills at
+# apps/sidecar/skills-bundled/.
+/.claude/
+/skills/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Tests / coverage
+coverage/
+.nyc_output/
+
+# Generated migrations meta (drizzle-kit re-genera)
+**/drizzle/meta/_journal.json
+
+# pnpm temp files
+_tmp_*

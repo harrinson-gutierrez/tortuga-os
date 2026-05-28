@@ -1,0 +1,46 @@
+{
+  "name": "flutter",
+  "version": "1.1.0",
+  "lastUpdated": "2026-05-19",
+  "changelog": [
+    "1.1.0: Added Android 15 / edge-to-edge section with mandatory SystemChrome setup, SafeArea + extendBody pattern, FAB inset rule, AnnotatedRegion for status bar brightness, anti-patterns and grep verification."
+  ],
+  "appliesWhen": "preferredStack matches /^flutter/i",
+  "officialRepos": [
+    {
+      "name": "flutter/samples",
+      "url": "https://github.com/flutter/samples",
+      "why": "Official Flutter samples — go_router, forms, testing, add-to-app patterns."
+    },
+    {
+      "name": "VeryGoodOpenSource/very_good_analysis",
+      "url": "https://github.com/VeryGoodOpenSource/very_good_analysis",
+      "why": "188+ lint rules. Pin in analysis_options.yaml."
+    },
+    {
+      "name": "Betterment/alchemist",
+      "url": "https://github.com/Betterment/alchemist",
+      "why": "Modern golden testing with light/dark variants, font bundling, DPR fixing."
+    },
+    {
+      "name": "phosphor-icons/flutter",
+      "url": "https://github.com/phosphor-icons/flutter",
+      "why": "Phosphor icon family with duotone variant — the recommended icon set."
+    },
+    {
+      "name": "felangel/bloc",
+      "url": "https://github.com/felangel/bloc",
+      "why": "flutter_bloc + bloc_test canonical source."
+    },
+    {
+      "name": "flutter/flutter",
+      "url": "https://github.com/flutter/flutter",
+      "why": "Issues / changelog / Material 3 status / Impeller iOS notes."
+    }
+  ],
+  "officialDocs": [
+    "https://docs.flutter.dev/app-architecture/recommendations",
+    "https://docs.flutter.dev/ui/internationalization",
+    "https://docs.flutter.dev/release/breaking-changes"
+  ]
+}

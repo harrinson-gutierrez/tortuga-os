@@ -1,0 +1,51 @@
+{
+  "name": "nextjs",
+  "version": "1.0.0",
+  "lastUpdated": "2026-05-19",
+  "appliesWhen": "preferredStack matches /^nextjs/i OR T-000-discovery locks Next.js as primary frontend",
+  "officialRepos": [
+    {
+      "name": "vercel/next.js",
+      "url": "https://github.com/vercel/next.js",
+      "why": "Official Next.js source. /examples folder has dozens of patterns."
+    },
+    {
+      "name": "shadcn-ui/ui",
+      "url": "https://github.com/shadcn-ui/ui",
+      "why": "Copy-paste Radix + Tailwind components. The recommended UI primitive set."
+    },
+    {
+      "name": "vercel/examples",
+      "url": "https://github.com/vercel/examples",
+      "why": "Official patterns, starters, edge functions, auth flows from Vercel."
+    },
+    {
+      "name": "nextauthjs/next-auth",
+      "url": "https://github.com/nextauthjs/next-auth",
+      "why": "Auth.js v5 reference."
+    },
+    {
+      "name": "drizzle-team/drizzle-orm",
+      "url": "https://github.com/drizzle-team/drizzle-orm",
+      "why": "Drizzle ORM source. Recommended for serverless / edge."
+    },
+    {
+      "name": "pmndrs/zustand",
+      "url": "https://github.com/pmndrs/zustand",
+      "why": "Recommended client state library."
+    },
+    {
+      "name": "TanStack/query",
+      "url": "https://github.com/TanStack/query",
+      "why": "TanStack Query v5 for server state."
+    }
+  ],
+  "officialDocs": [
+    "https://nextjs.org/docs",
+    "https://nextjs.org/docs/app/getting-started/server-and-client-components",
+    "https://nextjs.org/docs/app/getting-started/caching-and-revalidating",
+    "https://nextjs.org/docs/app/guides/data-security",
+    "https://ui.shadcn.com/docs",
+    "https://tanstack.com/query/latest"
+  ]
+}

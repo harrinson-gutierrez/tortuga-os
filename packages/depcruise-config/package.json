@@ -1,0 +1,11 @@
+{
+  "name": "@tortuga-os/depcruise-config",
+  "version": "0.1.0",
+  "private": true,
+  "description": "dependency-cruiser configuration enforcing the package boundary rules from docs/PACKAGE-STRUCTURE.md.",
+  "main": "./index.cjs",
+  "files": ["index.cjs"],
+  "peerDependencies": {
+    "dependency-cruiser": ">=16.0.0"
+  }
+}

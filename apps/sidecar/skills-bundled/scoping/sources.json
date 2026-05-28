@@ -1,0 +1,26 @@
+{
+  "name": "scoping",
+  "version": "1.0.0",
+  "lastUpdated": "2026-05-22",
+  "appliesWhen": "agent role is scoping-architect OR producing/auditing a quote or estimate for a project or module",
+  "officialRepos": [
+    {
+      "name": "github/scientist",
+      "url": "https://github.com/INVEST-criteria/invest",
+      "why": "INVEST criteria reference for slicing scope into independent, estimable, negotiable deliverables."
+    },
+    {
+      "name": "Mike Cohn — agile estimating reference",
+      "url": "https://github.com/mountaingoatsoftware",
+      "why": "Story points, planning poker, and relative-sizing material that underpins t-shirt/point estimation."
+    }
+  ],
+  "officialDocs": [
+    "https://en.wikipedia.org/wiki/Program_evaluation_and_review_technique",
+    "https://en.wikipedia.org/wiki/Three-point_estimation",
+    "https://en.wikipedia.org/wiki/Cone_of_Uncertainty",
+    "https://en.wikipedia.org/wiki/Planning_poker",
+    "https://www.atlassian.com/agile/project-management/estimation",
+    "https://martinfowler.com/bliki/PurposeOfEstimation.html"
+  ]
+}

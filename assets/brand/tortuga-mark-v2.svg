@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" aria-label="Tortuga OS">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#22c55e" stop-opacity="0.55"/>
+      <stop offset="60%" stop-color="#16a34a" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#052e16" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="shellTop" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#86efac"/>
+      <stop offset="55%" stop-color="#22c55e"/>
+      <stop offset="100%" stop-color="#15803d"/>
+    </linearGradient>
+    <linearGradient id="facetA" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#4ade80"/>
+      <stop offset="100%" stop-color="#16a34a"/>
+    </linearGradient>
+    <linearGradient id="facetB" x1="0%" y1="50%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#22c55e"/>
+      <stop offset="100%" stop-color="#15803d"/>
+    </linearGradient>
+    <linearGradient id="facetC" x1="100%" y1="50%" x2="0%" y2="50%">
+      <stop offset="0%" stop-color="#22c55e"/>
+      <stop offset="100%" stop-color="#15803d"/>
+    </linearGradient>
+    <linearGradient id="limb" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#22c55e"/>
+      <stop offset="100%" stop-color="#15803d"/>
+    </linearGradient>
+    <radialGradient id="shine" cx="35%" cy="30%" r="35%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <circle cx="128" cy="128" r="120" fill="url(#glow)"/>
+
+  <g>
+    <ellipse cx="62" cy="78" rx="20" ry="14" transform="rotate(-32 62 78)" fill="url(#limb)" stroke="#0a3d1f" stroke-width="2"/>
+    <ellipse cx="194" cy="78" rx="20" ry="14" transform="rotate(32 194 78)" fill="url(#limb)" stroke="#0a3d1f" stroke-width="2"/>
+    <ellipse cx="58" cy="186" rx="20" ry="14" transform="rotate(32 58 186)" fill="url(#limb)" stroke="#0a3d1f" stroke-width="2"/>
+    <ellipse cx="198" cy="186" rx="20" ry="14" transform="rotate(-32 198 186)" fill="url(#limb)" stroke="#0a3d1f" stroke-width="2"/>
+  </g>
+
+  <g>
+    <ellipse cx="128" cy="40" rx="22" ry="20" fill="url(#limb)" stroke="#0a3d1f" stroke-width="2"/>
+    <circle cx="120" cy="36" r="3" fill="#0a0a0a"/>
+    <circle cx="119" cy="35" r="1" fill="#ffffff" fill-opacity="0.8"/>
+    <circle cx="136" cy="36" r="3" fill="#0a0a0a"/>
+    <circle cx="135" cy="35" r="1" fill="#ffffff" fill-opacity="0.8"/>
+  </g>
+
+  <ellipse cx="128" cy="222" rx="9" ry="6" fill="url(#limb)" stroke="#0a3d1f" stroke-width="2"/>
+
+  <g>
+    <polygon
+      points="128,52 208,96 208,176 128,220 48,176 48,96"
+      fill="url(#shellTop)"
+      stroke="#0a3d1f"
+      stroke-width="3"
+      stroke-linejoin="round"/>
+
+    <polygon points="128,90 168,112 152,140 104,140 88,112" fill="url(#facetA)" stroke="#0a3d1f" stroke-width="1.5" stroke-linejoin="round"/>
+
+    <polygon points="128,90 88,112 80,96 128,68" fill="url(#facetB)" stroke="#0a3d1f" stroke-width="1.5" stroke-linejoin="round"/>
+    <polygon points="128,90 168,112 176,96 128,68" fill="url(#facetC)" stroke="#0a3d1f" stroke-width="1.5" stroke-linejoin="round"/>
+
+    <polygon points="88,112 80,96 56,118 76,134" fill="url(#facetB)" stroke="#0a3d1f" stroke-width="1.5" stroke-linejoin="round"/>
+    <polygon points="168,112 176,96 200,118 180,134" fill="url(#facetC)" stroke="#0a3d1f" stroke-width="1.5" stroke-linejoin="round"/>
+
+    <polygon points="88,112 76,134 60,160 104,140" fill="url(#facetA)" stroke="#0a3d1f" stroke-width="1.5" stroke-linejoin="round"/>
+    <polygon points="168,112 180,134 196,160 152,140" fill="url(#facetA)" stroke="#0a3d1f" stroke-width="1.5" stroke-linejoin="round"/>
+
+    <polygon points="104,140 60,160 96,196 128,176" fill="url(#facetB)" stroke="#0a3d1f" stroke-width="1.5" stroke-linejoin="round"/>
+    <polygon points="152,140 196,160 160,196 128,176" fill="url(#facetC)" stroke="#0a3d1f" stroke-width="1.5" stroke-linejoin="round"/>
+
+    <polygon points="104,140 152,140 128,176" fill="url(#facetA)" stroke="#0a3d1f" stroke-width="1.5" stroke-linejoin="round"/>
+
+    <polygon points="96,196 128,176 160,196 128,210" fill="url(#facetB)" stroke="#0a3d1f" stroke-width="1.5" stroke-linejoin="round"/>
+
+    <ellipse cx="100" cy="100" rx="36" ry="22" fill="url(#shine)" transform="rotate(-20 100 100)"/>
+  </g>
+</svg>

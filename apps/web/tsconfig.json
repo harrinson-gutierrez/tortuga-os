@@ -1,0 +1,7 @@
+{
+  "extends": "@tortuga-os/tsconfig/browser.json",
+  "compilerOptions": {
+    "types": ["vite/client"]
+  },
+  "include": ["src/**/*", "src/**/*.tsx", "../../packages/contracts/src/**/*"]
+}

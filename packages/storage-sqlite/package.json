@@ -1,0 +1,32 @@
+{
+  "name": "@tortuga-os/storage-sqlite",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts",
+    "./client": "./src/client.ts",
+    "./types": "./src/types.ts",
+    "./storage": "./src/sqlite-storage.ts"
+  },
+  "scripts": {
+    "generate": "drizzle-kit generate",
+    "migrate": "drizzle-kit migrate",
+    "studio": "drizzle-kit studio",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tortuga-os/core": "workspace:*",
+    "@tortuga-os/domain": "workspace:*",
+    "better-sqlite3": "^11.5.0",
+    "drizzle-orm": "^0.36.4"
+  },
+  "devDependencies": {
+    "@tortuga-os/tsconfig": "workspace:*",
+    "@types/better-sqlite3": "^7.6.12",
+    "drizzle-kit": "^0.28.1"
+  }
+}

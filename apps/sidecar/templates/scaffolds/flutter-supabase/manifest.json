@@ -1,0 +1,110 @@
+{
+  "stack": "flutter-supabase",
+  "displayName": "Flutter + Supabase",
+  "description": "App Flutter (Android + Web) con Supabase Auth + Postgres + RLS, Riverpod + go_router, Material 3.",
+  "steps": [
+    {
+      "id": "flutter-create",
+      "label": "Crear esqueleto Flutter",
+      "type": "bash",
+      "command": "flutter",
+      "args": [
+        "create",
+        "--org",
+        "com.tortugaos",
+        "--project-name",
+        "{{projectSlug}}",
+        "--platforms=android,web",
+        "05-build/app"
+      ],
+      "cwd": "."
+    },
+    {
+      "id": "pub-add-deps",
+      "label": "Instalar dependencias (Riverpod, Supabase, go_router, fl_chart, intl)",
+      "type": "bash",
+      "command": "flutter",
+      "args": [
+        "pub",
+        "add",
+        "flutter_riverpod",
+        "supabase_flutter",
+        "go_router",
+        "fl_chart",
+        "intl",
+        "flutter_dotenv"
+      ],
+      "cwd": "05-build/app"
+    },
+    {
+      "id": "pub-add-dev-deps",
+      "label": "Instalar dependencias de tests (mocktail, golden_toolkit, integration_test)",
+      "type": "bash",
+      "command": "flutter",
+      "args": ["pub", "add", "--dev", "mocktail", "golden_toolkit", "integration_test"],
+      "cwd": "05-build/app"
+    }
+  ],
+  "files": [
+    {
+      "to": "05-build/app/lib/main.dart",
+      "fromTemplate": "files/main.dart.tpl"
+    },
+    {
+      "to": "05-build/app/lib/core/theme.dart",
+      "fromTemplate": "files/theme.dart.tpl"
+    },
+    {
+      "to": "05-build/app/lib/core/router.dart",
+      "fromTemplate": "files/router.dart.tpl"
+    },
+    {
+      "to": "05-build/app/lib/core/supabase.dart",
+      "fromTemplate": "files/supabase.dart.tpl"
+    },
+    {
+      "to": "05-build/app/.env.example",
+      "fromTemplate": "files/env.example.tpl"
+    },
+    {
+      "to": "ARCHITECTURE.md",
+      "fromTemplate": "files/ARCHITECTURE.md.tpl"
+    },
+    {
+      "to": "05-build/app/test/flutter_test_config.dart",
+      "fromTemplate": "files/flutter_test_config.dart.tpl"
+    },
+    {
+      "to": "05-build/app/test/smoke_test.dart",
+      "fromTemplate": "files/smoke_test.dart.tpl"
+    },
+    {
+      "to": "05-build/app/test/smoke_golden_test.dart",
+      "fromTemplate": "files/smoke_golden_test.dart.tpl"
+    },
+    {
+      "to": "05-build/app/integration_test/app_boot_test.dart",
+      "fromTemplate": "files/app_boot_test.dart.tpl"
+    },
+    {
+      "to": "05-build/app/test/README.md",
+      "fromTemplate": "files/test_README.md.tpl"
+    }
+  ],
+  "verify": [
+    {
+      "id": "analyze",
+      "label": "Verificar tipos",
+      "command": "flutter",
+      "args": ["analyze", "--no-pub"],
+      "cwd": "05-build/app"
+    },
+    {
+      "id": "test",
+      "label": "Correr unit + widget + golden tests",
+      "command": "flutter",
+      "args": ["test", "--reporter=expanded"],
+      "cwd": "05-build/app"
+    }
+  ]
+}
