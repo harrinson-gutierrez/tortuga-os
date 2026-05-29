@@ -1,13 +1,7 @@
+import { INBOX_KINDS } from '@tortuga-os/domain'
 import { z } from 'zod'
 
-export const InboxKind = z.enum([
-  'agent_run_failed',
-  'agent_run_succeeded',
-  'gate_failed',
-  'task_blocked',
-  'release_built',
-  'info',
-])
+export const InboxKind = z.enum(INBOX_KINDS)
 export type InboxKind = z.infer<typeof InboxKind>
 
 export const CreateInboxItemInput = z.object({

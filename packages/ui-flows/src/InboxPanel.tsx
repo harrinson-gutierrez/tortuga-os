@@ -15,6 +15,8 @@ const KIND_LABEL: Record<InboxKind, string> = {
   gate_failed: 'Gate falló',
   task_blocked: 'Task bloqueado',
   release_built: 'Release listo',
+  troubleshoot_escalated: 'Troubleshoot escalado',
+  troubleshoot_verified: 'Troubleshoot verificado',
   info: 'Info',
 }
 
@@ -24,6 +26,8 @@ const KIND_TONE: Record<InboxKind, 'danger' | 'turtle' | 'warning' | 'neutral' |
   gate_failed: 'danger',
   task_blocked: 'warning',
   release_built: 'brand',
+  troubleshoot_escalated: 'danger',
+  troubleshoot_verified: 'turtle',
   info: 'neutral',
 }
 

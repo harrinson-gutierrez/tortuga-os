@@ -12,10 +12,9 @@ export interface KitTemplatesPanelProps {
 /**
  * Manage reusable project snapshots ("kits"). A kit captures the
  * stories + modules + milestones of a typical service so the operator
- * can spin up similar future projects pre-populated. This v1 panel
- * supports CRUD on the kit metadata; the "instantiate into a project"
- * flow is not wired yet (the use case to seed stories+modules
- * atomically is a follow-up).
+ * can spin up similar future projects pre-populated. Supports CRUD on
+ * the kit metadata plus instantiating a kit into an existing project's
+ * draft quote (seeds stories + modules + milestones).
  */
 export function KitTemplatesPanel({ client, onClose }: KitTemplatesPanelProps) {
   const [refreshKey, setRefreshKey] = useState(0)
@@ -77,6 +76,22 @@ export function KitTemplatesPanel({ client, onClose }: KitTemplatesPanelProps) {
     try {
       await client.kitTemplates.remove(k.id)
       setRefreshKey((k) => k + 1)
+    } catch (err) {
+      setSubmitError((err as Error).message)
+    }
+  }
+
+  async function instantiate(k: KitTemplateDTO) {
+    const projectCode = prompt(
+      `¿En qué proyecto instalar el kit "${k.name}"?\nEscribe el código del proyecto (ej. GASTUU).`,
+    )?.trim()
+    if (!projectCode) return
+    setSubmitError(null)
+    try {
+      const r = await client.kitTemplates.instantiate(k.id, projectCode)
+      alert(
+        `Kit aplicado a ${r.projectCode}: ${r.storiesCreated} stories, ${r.modulesCreated} módulos, ${r.milestonesCreated} milestones.`,
+      )
     } catch (err) {
       setSubmitError((err as Error).message)
     }
@@ -179,6 +194,9 @@ export function KitTemplatesPanel({ client, onClose }: KitTemplatesPanelProps) {
                   módulos · {k.snapshot.milestones?.length ?? 0} milestones
                 </div>
               </div>
+              <Button size="sm" variant="turtle" onClick={() => instantiate(k)}>
+                Usar en proyecto
+              </Button>
               <Button size="sm" variant="ghost" onClick={() => remove(k)}>
                 ✗
               </Button>

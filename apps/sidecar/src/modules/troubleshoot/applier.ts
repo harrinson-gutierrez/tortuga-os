@@ -6,6 +6,7 @@ import { useCases } from '@tortuga-os/core'
 import { logger } from '../../shared/logger'
 import { workspacePathFor } from '../workspace/use-cases'
 import { queueDiagnosisRun } from './diagnosis-queue'
+import { notifyTroubleshootOutcome, recordEvidence } from './evidence'
 import {
   applyMigrationViaMcp,
   openSupabaseMcpForProject,
@@ -224,6 +225,7 @@ export async function applyDiagnosisFiles(deps: CoreDeps, reportId: string): Pro
       reason: `markApplying failed: ${JSON.stringify(marked.error)}`,
     }
   }
+  await recordEvidence(deps, workspace, reportId, { at: Date.now(), kind: 'applying' })
 
   // Write files first (if any).
   let filesWritten: string[] = []
@@ -239,12 +241,24 @@ export async function applyDiagnosisFiles(deps: CoreDeps, reportId: string): Pro
     if (filesRejected.length > 0) {
       logger.warn({ reportId, rejected: filesRejected }, 'troubleshoot: some files were rejected')
     }
+    await recordEvidence(deps, workspace, reportId, {
+      at: Date.now(),
+      kind: 'files-written',
+      detail: `${filesWritten.length} written, ${filesRejected.length} rejected`,
+      data: { written: filesWritten, rejected: filesRejected },
+    })
   }
 
   // Apply SQL migrations via Supabase MCP (if any).
   let sqlResults: SqlApplyResult[] | undefined
   if (diagnosis.proposedSql.length > 0) {
     sqlResults = await applyProposedSql(deps, reportId, projectId, diagnosis)
+    await recordEvidence(deps, workspace, reportId, {
+      at: Date.now(),
+      kind: 'sql-applied',
+      detail: `${sqlResults.filter((r) => r.ok).length}/${sqlResults.length} migrations ok`,
+      data: { results: sqlResults },
+    })
   }
 
   // Decide consolidated outcome.
@@ -264,6 +278,12 @@ export async function applyDiagnosisFiles(deps: CoreDeps, reportId: string): Pro
       status: 'escalated',
       lastTestOutput: formatSqlResultsForLog(sqlResults!),
     })
+    await recordEvidence(deps, workspace, reportId, {
+      at: Date.now(),
+      kind: 'escalated',
+      detail: 'one or more SQL migrations failed',
+    })
+    await notifyTroubleshootOutcome(deps, reportId, 'escalated')
     return {
       reportId,
       status: 'applied-files-sql-failed',
@@ -353,6 +373,12 @@ async function runIntegrationTestStage(
   }
   const nextStatus = await recordTestOutcome(deps, reportId, result)
 
+  await recordEvidence(deps, workspace, reportId, {
+    at: Date.now(),
+    kind: result.passed ? 'test-passed' : 'test-failed',
+    detail: `exit ${result.exitCode ?? 'null'} (${result.testRelPath})`,
+  })
+
   if (nextStatus === 'open') {
     // Retry: re-queue diagnosis with the failing test output as context.
     // The worker post-run hook will attach the new diagnosis when the
@@ -361,6 +387,17 @@ async function runIntegrationTestStage(
     logger.info({ reportId, runId }, 'troubleshoot: test failed, re-queued diagnosis for retry')
     // Transition back into 'diagnosing' so the UI shows the spinner.
     await useCases.troubleshoot.markDiagnosing(deps, reportId)
+    await recordEvidence(deps, workspace, reportId, { at: Date.now(), kind: 'retrying' })
+  } else if (nextStatus === 'verified') {
+    await recordEvidence(deps, workspace, reportId, { at: Date.now(), kind: 'verified' })
+    await notifyTroubleshootOutcome(deps, reportId, 'verified')
+  } else if (nextStatus === 'escalated') {
+    await recordEvidence(deps, workspace, reportId, {
+      at: Date.now(),
+      kind: 'escalated',
+      detail: 'integration test failed on final attempt',
+    })
+    await notifyTroubleshootOutcome(deps, reportId, 'escalated')
   }
 
   return {

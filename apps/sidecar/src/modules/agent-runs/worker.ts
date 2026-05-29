@@ -14,6 +14,7 @@ import { coreDeps } from '../../shared/core-deps'
 import { logger } from '../../shared/logger'
 import { renderSkillsBlock, resolveSkillsForRun, skillsRootPath } from '../skills/use-cases'
 import { parseDiagnosisFromOutput } from '../troubleshoot/diagnosis-parser'
+import { notifyTroubleshootOutcome, recordEvidenceForReport } from '../troubleshoot/evidence'
 import { workspacePathFor } from '../workspace/use-cases'
 
 const MAX_CONCURRENT = 2
@@ -236,6 +237,12 @@ async function handleTroubleshooterDiagnosis(
       now: Date.now(),
       status: 'escalated',
     })
+    await recordEvidenceForReport(deps, report.id, {
+      at: Date.now(),
+      kind: 'escalated',
+      detail: 'agent output had no valid diagnosis JSON',
+    })
+    await notifyTroubleshootOutcome(deps, report.id, 'escalated')
     return
   }
   const attached = await useCases.troubleshoot.attachDiagnosis(deps, {
@@ -250,6 +257,16 @@ async function handleTroubleshooterDiagnosis(
     )
     return
   }
+  await recordEvidenceForReport(deps, report.id, {
+    at: Date.now(),
+    kind: 'diagnosed',
+    detail: `confidence ${parsed.diagnosis.confidence}, next status ${attached.value.status}`,
+    data: {
+      proposedFiles: parsed.diagnosis.proposedFiles.length,
+      proposedSql: parsed.diagnosis.proposedSql.length,
+      operatorActions: parsed.diagnosis.requiredOperatorActions.length,
+    },
+  })
   logger.info(
     {
       runId,
