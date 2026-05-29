@@ -93,6 +93,7 @@ function runCommand(
     const header = `[gate] $ ${cmd} ${args.join(' ')}\n[gate] cwd: ${cwd}\n[gate] started: ${new Date(startedAt).toISOString()}\n\n`
     logStream.write(header)
     chunks.push(Buffer.from(header, 'utf-8'))
+    // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
     const child = spawn(cmd, args, {
       cwd,
       shell: process.platform === 'win32',

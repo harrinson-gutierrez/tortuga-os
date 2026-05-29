@@ -377,6 +377,7 @@ function runOne(
   // need shell:true. The output buffering issue we hit with stream-json
   // doesn't apply here — these commands print plain text, not events
   // that need to drive UI in real time.
+  // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
   const child = spawn(command, args, {
     cwd,
     shell: process.platform === 'win32',

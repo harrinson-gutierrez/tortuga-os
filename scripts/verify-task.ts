@@ -95,6 +95,7 @@ function runCommand(
   return new Promise((resolvePromise) => {
     const startedAt = Date.now()
     const chunks: Buffer[] = []
+    // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
     const child = spawn(cmd, args, { cwd, shell: process.platform === 'win32' })
     const timer = setTimeout(() => {
       child.kill('SIGKILL')

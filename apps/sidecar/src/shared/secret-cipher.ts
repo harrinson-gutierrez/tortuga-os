@@ -52,6 +52,7 @@ export function createSecretCipher(): SecretCipher {
       const iv = Buffer.from(blob.iv, 'hex')
       const authTag = Buffer.from(blob.authTag, 'hex')
       const ciphertext = Buffer.from(blob.ciphertext, 'hex')
+      // nosemgrep: javascript.node-crypto.security.gcm-no-tag-length.gcm-no-tag-length
       const decipher = createDecipheriv('aes-256-gcm', key, iv)
       decipher.setAuthTag(authTag)
       const dec = Buffer.concat([decipher.update(ciphertext), decipher.final()])

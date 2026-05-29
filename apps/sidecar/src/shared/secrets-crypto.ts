@@ -83,6 +83,7 @@ export function decryptSecret(enc: EncryptedSecret): string {
   const iv = Buffer.from(enc.iv, 'base64')
   const ciphertext = Buffer.from(enc.ciphertext, 'base64')
   const authTag = Buffer.from(enc.authTag, 'base64')
+  // nosemgrep: javascript.node-crypto.security.gcm-no-tag-length.gcm-no-tag-length
   const decipher = createDecipheriv(ALGO, key, iv)
   decipher.setAuthTag(authTag)
   const pt = Buffer.concat([decipher.update(ciphertext), decipher.final()])

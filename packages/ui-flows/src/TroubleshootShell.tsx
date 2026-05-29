@@ -863,6 +863,229 @@ function DiagnosisDetail({ diagnosis, status, actions, onMarkAction }: Diagnosis
   )
 }
 
+// AppFailedDiagnose — Step-4 escape hatch when the app won't open
+
+const CRASH_MARKERS = [
+  'Unhandled Exception',
+  'E/flutter',
+  'FAILURE:',
+  'Exception:',
+  'Error:',
+  'FileNotFoundError',
+  'MissingPluginException',
+  'compilation failed',
+  'Gradle task assembleDebug failed',
+]
+
+function tailHasCrash(lines: string[]): boolean {
+  return lines.some((l) => CRASH_MARKERS.some((m) => l.includes(m)))
+}
+
+/** Last N lines, kept short enough to read but long enough to carry the
+ *  stack trace the troubleshooter needs. */
+function tailLines(lines: string[], n = 60): string {
+  return lines.slice(-n).join('\n').trim()
+}
+
+export interface AppFailedDiagnoseProps {
+  client: ApiClient
+  taskId: string
+  onCreated: () => void
+  onCancel: () => void
+}
+
+/**
+ * Inline panel shown when the operator says "the app didn't open" in the
+ * manual-test step. It auto-pulls the tail of the emulator's `flutter run`
+ * log (so a non-technical operator never has to copy a stack trace), and
+ * lets them add their own note + a screenshot. All three are merged into a
+ * single troubleshoot report. If no device log is available, the operator
+ * can still describe the failure by hand — we never dead-end them.
+ */
+export function AppFailedDiagnose({ client, taskId, onCreated, onCancel }: AppFailedDiagnoseProps) {
+  const devices = useAsyncData(() => client.preview.listDevices(), [client])
+  const serial = devices.data?.devices[0]?.serial ?? null
+
+  const [logTail, setLogTail] = useState('')
+  const [logState, setLogState] = useState<'idle' | 'loading' | 'found' | 'empty' | 'no-device'>(
+    'loading',
+  )
+  const [note, setNote] = useState('')
+  const [screenshot, setScreenshot] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pull once per resolved serial
+  useEffect(() => {
+    let cancelled = false
+    async function pull() {
+      if (devices.loading) return
+      if (!serial) {
+        setLogState('no-device')
+        return
+      }
+      setLogState('loading')
+      try {
+        const log = await client.preview.appLog(serial)
+        if (cancelled) return
+        const tail = tailLines(log.lines)
+        setLogTail(tail)
+        setLogState(tail ? 'found' : 'empty')
+      } catch {
+        if (!cancelled) setLogState('empty')
+      }
+    }
+    void pull()
+    return () => {
+      cancelled = true
+    }
+  }, [serial, devices.loading])
+
+  const handleFiles = useCallback((files: FileList | null) => {
+    if (!files || files.length === 0) return
+    const file = files[0]
+    if (!file || !file.type.startsWith('image/')) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === 'string') setScreenshot(reader.result)
+    }
+    reader.readAsDataURL(file)
+  }, [])
+
+  const onPaste = useCallback((e: React.ClipboardEvent) => {
+    for (const item of e.clipboardData.items) {
+      if (item.kind === 'file' && item.type.startsWith('image/')) {
+        const file = item.getAsFile()
+        if (!file) continue
+        const reader = new FileReader()
+        reader.onload = () => {
+          if (typeof reader.result === 'string') setScreenshot(reader.result)
+        }
+        reader.readAsDataURL(file)
+        e.preventDefault()
+        return
+      }
+    }
+  }, [])
+
+  // The error text we send merges the auto-captured log with the operator's
+  // own words. Either alone is enough to submit.
+  const composedError = (() => {
+    const parts: string[] = []
+    if (logTail.trim()) parts.push(`--- Log del emulador (flutter run) ---\n${logTail.trim()}`)
+    if (note.trim()) parts.push(`--- Lo que vi / hice ---\n${note.trim()}`)
+    return parts.join('\n\n')
+  })()
+  const canSubmit = composedError.trim().length > 0 && !submitting
+
+  const submit = async () => {
+    if (!canSubmit) return
+    setSubmitting(true)
+    setSubmitError(null)
+    try {
+      await client.troubleshoot.create({
+        taskId,
+        errorText: composedError.trim(),
+        contextNote: 'Reportado desde "La app no abre" (paso de prueba manual)',
+        ...(screenshot ? { beforeScreenshotPngBase64: screenshot } : {}),
+      })
+      onCreated()
+    } catch (err) {
+      setSubmitError((err as Error).message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Card recessed>
+      <div className="space-y-3">
+        <div className="text-[13px] text-text">
+          Vamos a diagnosticar por qué no abre. El agente lee el error solo — tú solo confirma o
+          agrega lo que viste.
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[11px] font-mono uppercase tracking-eyebrow text-text-muted">
+              Error del emulador (capturado automáticamente)
+            </span>
+            {logState === 'found' && (
+              <Badge tone={tailHasCrash(logTail.split('\n')) ? 'danger' : 'warning'} outline>
+                {tailHasCrash(logTail.split('\n')) ? 'crash detectado' : 'últimas líneas'}
+              </Badge>
+            )}
+          </div>
+          {logState === 'loading' && (
+            <div className="text-[12px] text-text-muted">Leyendo el log del emulador…</div>
+          )}
+          {logState === 'no-device' && (
+            <div className="text-[12px] text-warning">
+              No hay dispositivo conectado. Enciende el emulador y dale ▶ Instalar y correr, o
+              describe abajo qué pasó.
+            </div>
+          )}
+          {logState === 'empty' && (
+            <div className="text-[12px] text-text-muted">
+              No encontré log de esta corrida. Describe abajo qué pasó (y pega el error si lo
+              tienes).
+            </div>
+          )}
+          {logState === 'found' && (
+            <textarea
+              value={logTail}
+              onChange={(e) => setLogTail(e.target.value)}
+              rows={6}
+              className="w-full rounded-md bg-bg border border-border focus:border-brand/60 px-3 py-2 text-[12px] font-mono outline-none"
+            />
+          )}
+        </div>
+
+        <div>
+          <label
+            htmlFor="app-failed-note"
+            className="block text-[11px] font-mono uppercase tracking-eyebrow text-text-muted mb-1.5"
+          >
+            ¿Qué viste? (opcional, pero ayuda)
+          </label>
+          <textarea
+            id="app-failed-note"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            onPaste={onPaste}
+            rows={3}
+            placeholder="Se quedó pegada en el splash y no avanzó. Toqué Reintentar y volvió a fallar."
+            className="w-full rounded-md bg-bg border border-border focus:border-brand/60 px-3 py-2 text-[13px] outline-none"
+          />
+        </div>
+
+        <div>
+          {/* biome-ignore lint/a11y/noLabelWithoutControl: heading-style label for the ScreenshotDropZone composite below */}
+          <label className="block text-[11px] font-mono uppercase tracking-eyebrow text-text-muted mb-1.5">
+            Screenshot (opcional · pega o suelta una imagen)
+          </label>
+          <ScreenshotDropZone
+            screenshot={screenshot}
+            onFiles={handleFiles}
+            onClear={() => setScreenshot(null)}
+          />
+        </div>
+
+        {submitError && <div className="text-[12.5px] text-danger font-mono">{submitError}</div>}
+
+        <div className="flex items-center justify-end gap-2 pt-1">
+          <Button variant="ghost" size="sm" onClick={onCancel} disabled={submitting}>
+            Cancelar
+          </Button>
+          <Button variant="primary" size="sm" onClick={submit} disabled={!canSubmit}>
+            {submitting ? 'Enviando…' : 'Diagnosticar'}
+          </Button>
+        </div>
+      </div>
+    </Card>
+  )
+}
+
 // Helper hook still exported in case TaskDetail wants a badge count
 
 export function useTaskTroubleshootCount(

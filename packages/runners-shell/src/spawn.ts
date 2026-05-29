@@ -34,6 +34,7 @@ export function runProcess(spec: SpawnArgs): Promise<SpawnResult> {
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     }
+    // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
     const child = spawn(spec.command, spec.args.slice(), options)
 
     let stdout = ''

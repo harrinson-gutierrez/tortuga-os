@@ -14,7 +14,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { AgentRunsPanel } from './AgentRunsPanel'
 import { GatesPanel } from './GatesPanel'
 import { CoworkerLiveView, ScaffoldPanel } from './ScaffoldPanel'
-import { TroubleshootStepBody } from './TroubleshootShell'
+import { AppFailedDiagnose, TroubleshootStepBody } from './TroubleshootShell'
 import { WorkspacePanel } from './WorkspacePanel'
 import { useAsyncData } from './useAsyncData'
 
@@ -699,10 +699,14 @@ function buildSteps(args: {
         body:
           gatesPassed && inProgress && !manuallyTested ? (
             <ManualTestInline
+              client={client}
+              taskId={taskId}
+              refreshKey={refreshKey}
               onConfirm={() => {
                 window.localStorage.setItem(manualTestKey, '1')
                 onChanged()
               }}
+              onChanged={onChanged}
             />
           ) : null,
       }
@@ -956,7 +960,61 @@ function stepTitleClass(status: StepStatus): string {
   }
 }
 
-function ManualTestInline({ onConfirm }: { onConfirm: () => void }) {
+function ManualTestInline({
+  client,
+  taskId,
+  refreshKey,
+  onConfirm,
+  onChanged,
+}: {
+  client: ApiClient
+  taskId: string
+  refreshKey: number
+  onConfirm: () => void
+  onChanged: () => void
+}) {
+  // 'steps'    → instructions + the two CTAs (works / failed)
+  // 'diagnose' → the failure composer (auto-log + note + screenshot)
+  // 'reports'  → after a report exists: live troubleshooter output inline,
+  //              so the operator never leaves the manual-test step to see
+  //              the fix happen. This is what breaks the old catch-22 where
+  //              the troubleshoot step was hidden behind "marked as tested".
+  const [mode, setMode] = useState<'steps' | 'diagnose' | 'reports'>('steps')
+
+  if (mode === 'diagnose') {
+    return (
+      <AppFailedDiagnose
+        client={client}
+        taskId={taskId}
+        onCancel={() => setMode('steps')}
+        onCreated={() => {
+          setMode('reports')
+          onChanged()
+        }}
+      />
+    )
+  }
+
+  if (mode === 'reports') {
+    return (
+      <div className="space-y-3">
+        <div className="rounded-md border border-warning/40 bg-warning/5 p-3 text-[12.5px] text-text-soft">
+          El agente está diagnosticando el error. Cuando termine, aplica el fix, vuelve a correr la
+          app y —si ya funciona— marca como probado.
+        </div>
+        <TroubleshootStepBody client={client} taskId={taskId} refreshKey={refreshKey} />
+        <div className="flex items-center justify-between gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setMode('steps')}>
+            ← Volver a los pasos
+          </Button>
+          <Button variant="turtle" size="sm" onClick={onConfirm}>
+            ✓ Ya funciona, marcar como probado
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="rounded-md border border-border bg-bg-alt p-3">
       <div className="text-[12px] text-text-soft">Sigue estos pasos a la derecha:</div>
@@ -969,7 +1027,10 @@ function ManualTestInline({ onConfirm }: { onConfirm: () => void }) {
         </li>
         <li>Verifica que la app abra y la pantalla nueva funcione</li>
       </ol>
-      <div className="mt-3 flex justify-end">
+      <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+        <Button variant="ghost" size="sm" onClick={() => setMode('diagnose')}>
+          ✕ La app no abre / falló → diagnosticar
+        </Button>
         <Button variant="turtle" size="sm" onClick={onConfirm}>
           ✓ Funciona, marcar como probado
         </Button>
