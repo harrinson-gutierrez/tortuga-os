@@ -548,6 +548,32 @@ export const kitTemplates = sqliteTable('kit_templates', {
   deletedAt: integer('deleted_at'),
 })
 
+export const designFrameStatusValues = ['imported', 'generated', 'approved'] as const
+export type DesignFrameStatus = (typeof designFrameStatusValues)[number]
+
+export const designFrames = sqliteTable(
+  'design_frames',
+  {
+    id: text('id').primaryKey(),
+    storyId: text('story_id')
+      .notNull()
+      .references(() => stories.id, { onDelete: 'cascade' }),
+    figmaFileKey: text('figma_file_key').notNull(),
+    figmaNodeId: text('figma_node_id').notNull(),
+    name: text('name').notNull(),
+    tokensJson: text('tokens_json').notNull().default('{}'),
+    baselineScreenshotPath: text('baseline_screenshot_path'),
+    status: text('status', { enum: designFrameStatusValues }).notNull().default('imported'),
+    fidelityPct: integer('fidelity_pct'),
+    ...tsCols,
+    deletedAt: integer('deleted_at'),
+  },
+  (t) => ({
+    uniqueStoryNode: unique('design_frames_story_node_uq').on(t.storyId, t.figmaNodeId),
+    byStory: index('design_frames_story_idx').on(t.storyId),
+  }),
+)
+
 export const expenseCategoryValues = [
   'contractor',
   'saas',

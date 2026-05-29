@@ -1,6 +1,7 @@
 import {
   ApproveTaskInput,
   CreateClientInput,
+  CreateDesignFrameInput,
   CreateEvidenceInput,
   CreateExpenseInput,
   CreateGateInput,
@@ -18,6 +19,7 @@ import {
   InstantiateKitInput,
   LogWorkEntryInput,
   PatchClientInput,
+  PatchDesignFrameInput,
   PatchExpenseInput,
   PatchKitTemplateInput,
   PatchPersonInput,
@@ -494,6 +496,36 @@ export function buildDomainRouter(deps: CoreDeps): Hono {
       ),
       201,
     ),
+  )
+
+  r.get('/design-frames/story/:storyId', async (c) =>
+    respond(c, await useCases.designFrames.listDesignFramesForStory(deps, c.req.param('storyId'))),
+  )
+  r.get('/design-frames/:id', async (c) =>
+    respond(c, await useCases.designFrames.getDesignFrame(deps, c.req.param('id'))),
+  )
+  r.post('/design-frames', async (c) =>
+    respond(
+      c,
+      await useCases.designFrames.createDesignFrame(
+        deps,
+        CreateDesignFrameInput.parse(await c.req.json()),
+      ),
+      201,
+    ),
+  )
+  r.patch('/design-frames/:id', async (c) =>
+    respond(
+      c,
+      await useCases.designFrames.patchDesignFrame(
+        deps,
+        c.req.param('id'),
+        PatchDesignFrameInput.parse(await c.req.json()),
+      ),
+    ),
+  )
+  r.delete('/design-frames/:id', async (c) =>
+    respond(c, await useCases.designFrames.deleteDesignFrame(deps, c.req.param('id'))),
   )
 
   r.get('/expenses/project/:code', async (c) =>

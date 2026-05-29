@@ -3,6 +3,7 @@ import type { StoryDTO, TaskDTO } from '@tortuga-os/contracts'
 import { Badge, Button, Card, Eyebrow, Stack, TextField } from '@tortuga-os/ui'
 import { useCallback, useRef, useState } from 'react'
 import { CostReport } from './CostReport'
+import { DesignPanel } from './DesignPanel'
 import { DiscoveryChat } from './DiscoveryChat'
 import { ExpensesPanel } from './ExpensesPanel'
 import { ProjectEnvsPanel } from './ProjectEnvsPanel'
@@ -205,6 +206,10 @@ export function ProjectDetail({
           </div>
         )}
       </Card>
+
+      <CollapsibleSection title="Diseño (Figma)">
+        <DesignPanel client={client} projectCode={projectCode} stories={stories.data ?? []} />
+      </CollapsibleSection>
 
       <CollapsibleSection title="Gastos del proyecto">
         <ExpensesPanel client={client} projectCode={projectCode} />

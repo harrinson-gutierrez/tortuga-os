@@ -8,6 +8,7 @@ import {
 } from '@tortuga-os/api-server'
 import { Hono } from 'hono'
 import { agentRunsRouter } from './modules/agent-runs/routes'
+import { designRouter } from './modules/design/routes'
 import { discoveryRouter } from './modules/discovery/routes'
 import { gatesRunRouter } from './modules/gates/routes'
 import { previewRouter } from './modules/preview/routes'
@@ -64,6 +65,10 @@ export function buildApp() {
   // Runtime error troubleshooter: paste/hook/logcat errors → structured
   // diagnosis → apply fix → run integration test → operator confirm.
   app.route('/api/troubleshoot', troubleshootRouter)
+  // F3 design: import a Figma file or generate one from intent. Both queue
+  // a `designer` agent run that talks to the Figma MCP; the worker post-run
+  // hook persists the resulting frames + baseline screenshots.
+  app.route('/api/design', designRouter)
 
   if (process.env.TORTUGA_HANDSHAKE_TOKEN) {
     logger.info('Sidecar handshake: ENABLED (TORTUGA_HANDSHAKE_TOKEN is set)')

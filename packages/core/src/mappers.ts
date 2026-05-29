@@ -8,6 +8,8 @@
 import type {
   AgentRunDTO,
   ClientDTO,
+  DesignFrameDTO,
+  DesignTokens,
   DiscoveryConversationDTO,
   DiscoveryMessageDTO,
   DiscoveryStoryDraftDTO,
@@ -41,6 +43,7 @@ import {
 import type {
   AgentRunRow,
   ClientRow,
+  DesignFrameRow,
   DiscoveryConversationRow,
   DiscoveryMessageRow,
   EvidenceRow,
@@ -383,6 +386,20 @@ export const kitTemplateDTO = (k: KitTemplateRow): KitTemplateDTO => ({
   })(),
   createdAt: k.createdAt,
   updatedAt: k.updatedAt,
+})
+
+export const designFrameDTO = (d: DesignFrameRow): DesignFrameDTO => ({
+  id: d.id,
+  storyId: d.storyId,
+  figmaFileKey: d.figmaFileKey,
+  figmaNodeId: d.figmaNodeId,
+  name: d.name,
+  tokens: parseJsonOr(d.tokensJson, {} as DesignTokens),
+  baselineScreenshotPath: d.baselineScreenshotPath,
+  status: d.status,
+  fidelityPct: d.fidelityPct,
+  createdAt: d.createdAt,
+  updatedAt: d.updatedAt,
 })
 
 export const expenseDTO = (e: ExpenseRow): ExpenseDTO => ({

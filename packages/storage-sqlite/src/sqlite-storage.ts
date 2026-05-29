@@ -14,6 +14,7 @@ import type {
   CloseAgentRunSucceededArgs,
   CloseAgentRunUnsuccessfulArgs,
   CreateAgentRunArgs,
+  CreateDesignFrameArgs,
   CreateEvidenceArgs,
   CreateExpenseArgs,
   CreateGateArgs,
@@ -28,6 +29,7 @@ import type {
   CreateSecretArgs,
   CreateTaskArgs,
   CreateTroubleshootReportArgs,
+  DesignFrameRow,
   DiscoveryConversationRow,
   DiscoveryMessageRow,
   EvidenceRow,
@@ -37,6 +39,7 @@ import type {
   IterationRow,
   KitTemplateRow,
   LogWorkEntryArgs,
+  PatchDesignFrameArgs,
   PatchExpenseArgs,
   PatchKitTemplateArgs,
   PatchProjectEnvArgs,
@@ -81,6 +84,7 @@ import type { Db } from './client'
 import {
   agentRuns,
   clients,
+  designFrames,
   discoveryConversations,
   discoveryMessages,
   evidence,
@@ -1445,6 +1449,69 @@ export function createSqliteStorage(db: Db): Storage {
         .update(kitTemplates)
         .set({ deletedAt: now, updatedAt: now })
         .where(eq(kitTemplates.id, id))
+        .run()
+    },
+
+    async listDesignFramesForStory(storyId) {
+      return db
+        .select()
+        .from(designFrames)
+        .where(and(eq(designFrames.storyId, storyId), isNull(designFrames.deletedAt)))
+        .orderBy(asc(designFrames.createdAt))
+        .all() as DesignFrameRow[]
+    },
+
+    async getDesignFrameById(id) {
+      const row = await db
+        .select()
+        .from(designFrames)
+        .where(and(eq(designFrames.id, id), isNull(designFrames.deletedAt)))
+        .get()
+      return (row ?? null) as DesignFrameRow | null
+    },
+
+    async createDesignFrame(args: CreateDesignFrameArgs) {
+      await db
+        .insert(designFrames)
+        .values({
+          id: args.id,
+          storyId: args.storyId,
+          figmaFileKey: args.figmaFileKey,
+          figmaNodeId: args.figmaNodeId,
+          name: args.name,
+          tokensJson: args.tokensJson,
+          baselineScreenshotPath: args.baselineScreenshotPath,
+          status: args.status,
+          fidelityPct: args.fidelityPct,
+          createdAt: args.now,
+          updatedAt: args.now,
+        })
+        .run()
+      const row = await db.select().from(designFrames).where(eq(designFrames.id, args.id)).get()
+      if (!row) throw new Error(`design_frame ${args.id} not found after insert`)
+      return row as DesignFrameRow
+    },
+
+    async patchDesignFrame(args: PatchDesignFrameArgs) {
+      const updates: Record<string, unknown> = { updatedAt: args.now }
+      if (args.patch.name !== undefined) updates.name = args.patch.name
+      if (args.patch.tokensJson !== undefined) updates.tokensJson = args.patch.tokensJson
+      if (args.patch.baselineScreenshotPath !== undefined) {
+        updates.baselineScreenshotPath = args.patch.baselineScreenshotPath
+      }
+      if (args.patch.status !== undefined) updates.status = args.patch.status
+      if (args.patch.fidelityPct !== undefined) updates.fidelityPct = args.patch.fidelityPct
+      await db.update(designFrames).set(updates).where(eq(designFrames.id, args.id)).run()
+      const row = await db.select().from(designFrames).where(eq(designFrames.id, args.id)).get()
+      if (!row) throw new Error(`design_frame ${args.id} not found after patch`)
+      return row as DesignFrameRow
+    },
+
+    async softDeleteDesignFrame(id, now) {
+      await db
+        .update(designFrames)
+        .set({ deletedAt: now, updatedAt: now })
+        .where(eq(designFrames.id, id))
         .run()
     },
 

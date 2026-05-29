@@ -32,6 +32,7 @@ import type {
 import type {
   AgentRunRow,
   ClientRow,
+  DesignFrameRow,
   DiscoveryConversationRow,
   DiscoveryMessageRow,
   EvidenceRow,
@@ -193,6 +194,31 @@ export interface PatchKitTemplateArgs {
     description: string | null
     stack: string
     snapshotJson: string
+  }>
+  now: number
+}
+
+export interface CreateDesignFrameArgs {
+  id: string
+  storyId: string
+  figmaFileKey: string
+  figmaNodeId: string
+  name: string
+  tokensJson: string
+  baselineScreenshotPath: string | null
+  status: 'imported' | 'generated' | 'approved'
+  fidelityPct: number | null
+  now: number
+}
+
+export interface PatchDesignFrameArgs {
+  id: string
+  patch: Partial<{
+    name: string
+    tokensJson: string
+    baselineScreenshotPath: string | null
+    status: 'imported' | 'generated' | 'approved'
+    fidelityPct: number | null
   }>
   now: number
 }
@@ -628,6 +654,12 @@ export interface Storage {
   createKitTemplate(args: CreateKitTemplateArgs): Promise<KitTemplateRow>
   patchKitTemplate(args: PatchKitTemplateArgs): Promise<KitTemplateRow>
   softDeleteKitTemplate(id: string, now: number): Promise<void>
+
+  listDesignFramesForStory(storyId: string): Promise<DesignFrameRow[]>
+  getDesignFrameById(id: string): Promise<DesignFrameRow | null>
+  createDesignFrame(args: CreateDesignFrameArgs): Promise<DesignFrameRow>
+  patchDesignFrame(args: PatchDesignFrameArgs): Promise<DesignFrameRow>
+  softDeleteDesignFrame(id: string, now: number): Promise<void>
 
   listExpensesForProject(projectId: string): Promise<ExpenseRow[]>
   getExpenseById(id: string): Promise<ExpenseRow | null>

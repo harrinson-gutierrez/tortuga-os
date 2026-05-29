@@ -12,6 +12,7 @@ import type { CoreDeps } from '@tortuga-os/core'
 import { useCases } from '@tortuga-os/core'
 import { coreDeps } from '../../shared/core-deps'
 import { logger } from '../../shared/logger'
+import { handleDesignerOutput } from '../design/designer-output'
 import { renderSkillsBlock, resolveSkillsForRun, skillsRootPath } from '../skills/use-cases'
 import { parseDiagnosisFromOutput } from '../troubleshoot/diagnosis-parser'
 import { notifyTroubleshootOutcome, recordEvidenceForReport } from '../troubleshoot/evidence'
@@ -550,6 +551,13 @@ async function processOneRun(deps: CoreDeps, runId: string): Promise<void> {
     // operator can rediagnose manually instead of looping silently.
     if (run.agentKind === 'troubleshooter') {
       await handleTroubleshooterDiagnosis(deps, run.id, outcome.output)
+    }
+
+    // Designer runs (F3): parse the emitted frames + tokens and persist
+    // them as design_frames, decoding each baseline screenshot to disk for
+    // the G5 fidelity gate.
+    if (run.agentKind === 'designer') {
+      await handleDesignerOutput(deps, run.id, outcome.output)
     }
 
     await safeEnqueueRunInbox(deps, {

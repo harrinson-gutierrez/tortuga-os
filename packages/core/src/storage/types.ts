@@ -316,6 +316,21 @@ export interface KitTemplateRow {
   deletedAt: number | null
 }
 
+export interface DesignFrameRow {
+  id: string
+  storyId: string
+  figmaFileKey: string
+  figmaNodeId: string
+  name: string
+  tokensJson: string
+  baselineScreenshotPath: string | null
+  status: 'imported' | 'generated' | 'approved'
+  fidelityPct: number | null
+  createdAt: number
+  updatedAt: number
+  deletedAt: number | null
+}
+
 export type ExpenseCategory =
   | 'contractor'
   | 'saas'

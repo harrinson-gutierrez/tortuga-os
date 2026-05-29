@@ -1,5 +1,6 @@
 export * as agentRuns from './agent-runs'
 export * as clients from './clients'
+export * as designFrames from './design-frames'
 export * as discovery from './discovery'
 export * as projectMcps from './mcp-connections'
 export * as people from './people'

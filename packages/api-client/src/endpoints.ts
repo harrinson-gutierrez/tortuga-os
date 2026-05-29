@@ -22,6 +22,7 @@ import type {
   CreateStoryInput,
   CreateTaskInput,
   CreateTroubleshootInput,
+  DesignFrameDTO,
   DiscoveryConversationWithMessagesDTO,
   DiscoveryMessageDTO,
   DiscoveryStoryDraftDTO,
@@ -29,6 +30,8 @@ import type {
   ExpenseDTO,
   GateDTO,
   GateType,
+  GenerateDesignInput,
+  ImportDesignInput,
   InboxItemDTO,
   InstantiateKitResult,
   IterationDTO,
@@ -36,6 +39,7 @@ import type {
   LogWorkEntryInput,
   MarkActionDoneInput,
   PatchClientInput,
+  PatchDesignFrameInput,
   PatchExpenseInput,
   PatchKitTemplateInput,
   PatchPersonInput,
@@ -504,6 +508,13 @@ export function createApiClient(config: ApiClientConfig) {
           'GET',
           `/api/workspace/${encodeURIComponent(projectCode)}/file?path=${encodeURIComponent(path)}`,
         ),
+      /** Absolute URL to the raw bytes of a workspace file (for <img> src).
+       *  Carries the handshake token in the query like screenshotUrl. */
+      rawUrl: (projectCode: string, path: string) => {
+        const base = `${config.baseUrl}/api/workspace/${encodeURIComponent(projectCode)}/raw?path=${encodeURIComponent(path)}`
+        if (!config.secret) return base
+        return `${base}&_secret=${encodeURIComponent(config.secret)}`
+      },
       ensure: (projectCode: string) =>
         request<{ projectCode: string; root: string }>(
           config,
@@ -630,6 +641,27 @@ export function createApiClient(config: ApiClientConfig) {
         request<InstantiateKitResult>(config, 'POST', `/api/kit-templates/${id}/instantiate`, {
           projectCode,
         }),
+    },
+
+    designFrames: {
+      listForStory: (storyId: string) =>
+        request<DesignFrameDTO[]>(
+          config,
+          'GET',
+          `/api/design-frames/story/${encodeURIComponent(storyId)}`,
+        ),
+      get: (id: string) => request<DesignFrameDTO>(config, 'GET', `/api/design-frames/${id}`),
+      patch: (id: string, input: PatchDesignFrameInput) =>
+        request<DesignFrameDTO>(config, 'PATCH', `/api/design-frames/${id}`, input),
+      remove: (id: string) => request<{ ok: true }>(config, 'DELETE', `/api/design-frames/${id}`),
+      // Import/generate are handled by the sidecar `design` module: they
+      // queue a `designer` agent run that talks to the Figma MCP.
+      import: (input: ImportDesignInput) =>
+        request<{ runId: string; storyId: string }>(config, 'POST', '/api/design/import', input),
+      generate: (input: GenerateDesignInput) =>
+        request<{ runId: string; storyId: string }>(config, 'POST', '/api/design/generate', input),
+      approve: (frameId: string) =>
+        request<DesignFrameDTO>(config, 'POST', `/api/design/${frameId}/approve`, {}),
     },
 
     expenses: {

@@ -26,6 +26,7 @@ import type {
   TaskStatus,
   TaskType,
 } from './enums'
+import type { DesignFrameStatus, DesignTokens } from './schemas/design-frames'
 import type { InboxKind } from './schemas/inbox'
 import type { ProjectEnvironment } from './schemas/project-envs'
 
@@ -547,6 +548,20 @@ export interface ProjectMcpDTO {
   url: string | null
   headers: Record<string, string>
   presetId: string | null
+  createdAt: number
+  updatedAt: number
+}
+
+export interface DesignFrameDTO {
+  id: string
+  storyId: string
+  figmaFileKey: string
+  figmaNodeId: string
+  name: string
+  tokens: DesignTokens
+  baselineScreenshotPath: string | null
+  status: DesignFrameStatus
+  fidelityPct: number | null
   createdAt: number
   updatedAt: number
 }
