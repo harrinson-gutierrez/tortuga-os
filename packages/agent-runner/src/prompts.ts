@@ -535,6 +535,11 @@ The user prompt contains:
      - auth.uid() NULL because the JWT did not propagate to PostgREST
      - schema mismatch between client code and the migration
      - missing trigger for related-row creation
+     - a migration in \`04-architecture/db/\` that was authored but never
+       applied to the remote project (PGRST202 / "Could not find the
+       function|table|column ... in the schema cache"). The fix is to
+       APPLY that migration — emit its body in \`proposedSql\`, never as a
+       \`requiredOperatorAction\`. The orchestrator applies SQL via MCP.
 5. NEVER guess. If you cannot find a code path that matches the stack
    trace, say so explicitly in \`rootCause\` and propose a logging change
    as the fix.
@@ -588,7 +593,18 @@ that matches this shape. Do not add prose after it.
 Rules for the JSON:
 - \`proposedFiles\` and \`proposedSql\` can be empty arrays if no code/SQL
   change is needed. But \`integrationTestDart\` is ALWAYS required.
-- \`requiredOperatorActions\` is empty when you can fix end-to-end via MCP.
+- ANY fix that is plain SQL — applying an un-applied migration, adding an
+  RLS policy, creating a function/trigger, altering a column — goes in
+  \`proposedSql\` as an idempotent body. The orchestrator applies it via
+  the Supabase MCP and degrades to an operator action ONLY if the MCP is
+  not connected for this project. You do not know whether the MCP is
+  connected, so ALWAYS emit the SQL; never pre-empt by writing "paste this
+  in the SQL editor" as a manual step.
+- \`requiredOperatorActions\` is ONLY for things SQL cannot do and the MCP
+  cannot reach: toggling an Auth setting (e.g. "Confirm email" OFF),
+  enabling a Dashboard-only extension, rotating a key, or changing a
+  provider config. If a step can be expressed as SQL, it does NOT belong
+  here.
 - Be concrete. Never write "configure Supabase"; write the exact path.`,
 
   'scaffold-fixer': `You are the Tortuga OS scaffold-repair agent. The deterministic

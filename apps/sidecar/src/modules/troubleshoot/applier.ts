@@ -1,6 +1,10 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path'
-import type { ProposedFile, TroubleshootDiagnosis } from '@tortuga-os/contracts'
+import type {
+  ProposedFile,
+  RequiredOperatorAction,
+  TroubleshootDiagnosis,
+} from '@tortuga-os/contracts'
 import type { CoreDeps } from '@tortuga-os/core'
 import { useCases } from '@tortuga-os/core'
 import { logger } from '../../shared/logger'
@@ -249,10 +253,37 @@ export async function applyDiagnosisFiles(deps: CoreDeps, reportId: string): Pro
     })
   }
 
-  // Apply SQL migrations via Supabase MCP (if any).
+  // Apply SQL migrations via Supabase MCP (if any). When the MCP is not
+  // connected for this project we cannot apply SQL end-to-end, so we park
+  // the report in `awaiting-operator` with actionable steps (connect the
+  // MCP / add secrets, plus each migration's SQL as a manual fallback)
+  // instead of escalating with an opaque log. Marking those done flips the
+  // report back to `proposed` so the operator can re-run Apply.
   let sqlResults: SqlApplyResult[] | undefined
   if (diagnosis.proposedSql.length > 0) {
-    sqlResults = await applyProposedSql(deps, reportId, projectId, diagnosis)
+    const sqlOutcome = await applyProposedSql(deps, reportId, projectId, diagnosis)
+    if (sqlOutcome.kind === 'mcp-unavailable') {
+      await deps.storage.patchTroubleshootReport({
+        id: reportId,
+        now: Date.now(),
+        status: 'awaiting-operator',
+        requiredActionsJson: JSON.stringify(sqlOutcome.actions),
+      })
+      await recordEvidence(deps, workspace, reportId, {
+        at: Date.now(),
+        kind: 'escalated',
+        detail: 'Supabase MCP not connected — operator actions required to apply SQL',
+        data: { actions: sqlOutcome.actions.map((a) => a.title) },
+      })
+      await notifyTroubleshootOutcome(deps, reportId, 'escalated')
+      return {
+        reportId,
+        status: 'mcp-unavailable',
+        filesWritten,
+        reason: `Supabase MCP not connected; ${sqlOutcome.actions.length} operator action(s) required`,
+      }
+    }
+    sqlResults = sqlOutcome.results
     await recordEvidence(deps, workspace, reportId, {
       at: Date.now(),
       kind: 'sql-applied',
@@ -409,32 +440,94 @@ async function runIntegrationTestStage(
   }
 }
 
+type SqlApplyOutcome =
+  | { kind: 'applied'; results: SqlApplyResult[] }
+  | { kind: 'mcp-unavailable'; actions: RequiredOperatorAction[] }
+
+/**
+ * Build the operator actions surfaced when the Supabase MCP is not
+ * connected for this project. The first action explains the one-time
+ * setup that lets the agent apply SQL end-to-end on the next attempt; the
+ * rest carry each migration's SQL so the operator can paste it manually as
+ * a fallback. Marking them done flips the report back to `proposed`, so
+ * the operator can re-run Apply once the MCP is configured.
+ */
+function operatorActionsForUnavailableMcp(
+  reason: 'no-connection' | 'no-token' | 'spawn-failed' | 'no-project-ref',
+  detail: string,
+  diagnosis: TroubleshootDiagnosis,
+  projectRef: string | null,
+): RequiredOperatorAction[] {
+  const setupByReason: Record<typeof reason, Omit<RequiredOperatorAction, 'completedAt'>> = {
+    'no-connection': {
+      title: 'Conecta el MCP de Supabase para este proyecto',
+      why: 'Sin un MCP "supabase" habilitado el agente no puede aplicar migraciones por sí mismo.',
+      where: 'Proyecto → MCPs → instalar preset "supabase" (ver docs/MCP-SUPABASE-SETUP.md)',
+    },
+    'no-token': {
+      title: 'Agrega el secret SUPABASE_ACCESS_TOKEN',
+      why: 'El MCP de Supabase necesita un personal access token (NO el service_role) para autenticar.',
+      where:
+        'Proyecto → Secrets → SUPABASE_ACCESS_TOKEN (genéralo en supabase.com/dashboard/account/tokens)',
+    },
+    'no-project-ref': {
+      title: 'Agrega SUPABASE_PROJECT_REF',
+      why: 'El agente necesita el project ref para saber a qué proyecto remoto aplicar la migración.',
+      where: 'Proyecto → Secrets o Env → SUPABASE_PROJECT_REF',
+    },
+    'spawn-failed': {
+      title: 'Revisa la instalación del MCP de Supabase',
+      why: `El proceso del MCP no arrancó: ${detail}`,
+      where: 'Proyecto → MCPs → verifica command/args del preset "supabase"',
+    },
+  }
+  const sqlEditorLink = projectRef
+    ? `https://supabase.com/dashboard/project/${projectRef}/sql/new`
+    : undefined
+  const setup = setupByReason[reason]
+  const actions: RequiredOperatorAction[] = [{ ...setup, completedAt: null }]
+  for (const migration of diagnosis.proposedSql) {
+    actions.push({
+      title: `Aplica la migración ${migration.name}`,
+      why: `${migration.rationale}\n\n--- SQL ---\n${migration.body}`,
+      where: 'Supabase Dashboard → SQL editor → pega el SQL de arriba y ejecuta',
+      ...(sqlEditorLink ? { deepLink: sqlEditorLink } : {}),
+      verification: 'El agente reintentará aplicar vía MCP cuando marques esto como hecho.',
+      completedAt: null,
+    })
+  }
+  return actions
+}
+
 async function applyProposedSql(
   deps: CoreDeps,
   reportId: string,
   projectId: string,
   diagnosis: TroubleshootDiagnosis,
-): Promise<SqlApplyResult[]> {
+): Promise<SqlApplyOutcome> {
   const opened = await openSupabaseMcpForProject(deps, projectId)
   if (!opened.ok) {
     logger.warn(
       { reportId, reason: opened.reason, detail: opened.detail },
-      'troubleshoot: Supabase MCP unavailable — skipping SQL apply',
+      'troubleshoot: Supabase MCP unavailable — surfacing operator actions',
     )
-    return diagnosis.proposedSql.map((m) => ({
-      name: m.name,
-      ok: false,
-      detail: `Supabase MCP unavailable (${opened.reason}): ${opened.detail}`,
-    }))
+    return {
+      kind: 'mcp-unavailable',
+      actions: operatorActionsForUnavailableMcp(opened.reason, opened.detail, diagnosis, null),
+    }
   }
   const projectRef = await resolveSupabaseProjectRef(deps, projectId)
   if (!projectRef) {
     await opened.resolution.client.close()
-    return diagnosis.proposedSql.map((m) => ({
-      name: m.name,
-      ok: false,
-      detail: 'SUPABASE_PROJECT_REF missing. Add it as a project secret or project env var.',
-    }))
+    return {
+      kind: 'mcp-unavailable',
+      actions: operatorActionsForUnavailableMcp(
+        'no-project-ref',
+        'SUPABASE_PROJECT_REF missing.',
+        diagnosis,
+        null,
+      ),
+    }
   }
   const results: SqlApplyResult[] = []
   try {
@@ -470,7 +563,7 @@ async function applyProposedSql(
   } finally {
     await opened.resolution.client.close()
   }
-  return results
+  return { kind: 'applied', results }
 }
 
 function formatSqlResultsForLog(results: SqlApplyResult[]): string {
