@@ -738,6 +738,11 @@ function buildSteps(args: {
   const qaRun: AgentRunDTO | null = qaRuns[0] ?? null
   const qaActive = qaRun?.status === 'queued' || qaRun?.status === 'running'
   const qaDone = qaRun?.status === 'succeeded'
+  // The QA agent was interrupted (sidecar restart mid-run, manual cancel, or
+  // crash) before it could write a verdict. Without an explicit branch the
+  // step silently falls back to "Launch QA" and the operator can't tell the
+  // run was aborted vs never started — so we surface it.
+  const qaInterrupted = qaRun?.status === 'cancelled' || qaRun?.status === 'failed'
   // A QA verdict is only meaningful if no dev/impl run has started AFTER it
   // — once the operator asks the dev agent to fix the defects, the previous
   // verdict refers to stale code. We detect this by comparing createdAt
@@ -778,7 +783,9 @@ function buildSteps(args: {
             ? 'QA automática encontró problemas'
             : qaVerdictMissing
               ? 'QA terminó sin veredicto válido'
-              : 'Pasar por QA automática',
+              : qaInterrupted
+                ? 'QA se interrumpió'
+                : 'Pasar por QA automática',
     hint: inQa
       ? 'Esperando tu decisión final abajo.'
       : qaActive
@@ -789,9 +796,11 @@ function buildSteps(args: {
             ? 'Revisa los defectos abajo y decide si los corriges o aprobar igual bajo tu criterio.'
             : qaVerdictMissing
               ? 'El agente respondió pero no escribió qa-verdict.json ni un bloque "## Verdict". Relánzalo o aprueba/rechaza tú directamente.'
-              : isFlutterImpl && !manuallyTested
-                ? 'Primero confirma que probaste la app en el emulador (paso anterior).'
-                : 'Lanza un agente revisor que audita acceptance criteria + lint.',
+              : qaInterrupted
+                ? 'La revisión se cortó antes de terminar (suele pasar si recargaste o el sidecar reinició mientras corría). Relánzala.'
+                : isFlutterImpl && !manuallyTested
+                  ? 'Primero confirma que probaste la app en el emulador (paso anterior).'
+                  : 'Lanza un agente revisor que audita acceptance criteria + lint.',
     status:
       isApproved || isRejected
         ? 'done'
@@ -805,9 +814,11 @@ function buildSteps(args: {
                 ? 'blocked'
                 : qaVerdictMissing
                   ? 'blocked'
-                  : canRunQa
-                    ? 'current'
-                    : 'todo',
+                  : qaInterrupted
+                    ? 'blocked'
+                    : canRunQa
+                      ? 'current'
+                      : 'todo',
     body:
       isApproved || isRejected || inQa ? null : qaActive && qaRun ? (
         <RunTranscript run={qaRun} live client={client} onChanged={onChanged} />
@@ -829,6 +840,14 @@ function buildSteps(args: {
           taskId={taskId}
           editedFiles={editedFiles}
           onChanged={onChanged}
+        />
+      ) : qaInterrupted && qaRun ? (
+        <LaunchQaInline
+          client={client}
+          taskId={taskId}
+          editedFiles={editedFiles}
+          onLaunched={onChanged}
+          interruptedRun={qaRun}
         />
       ) : canRunQa ? (
         <LaunchQaInline
@@ -2101,14 +2120,19 @@ function LaunchQaInline({
   taskId,
   editedFiles,
   onLaunched,
+  interruptedRun,
 }: {
   client: ApiClient
   taskId: string
   editedFiles: string[]
   onLaunched: () => void
+  /** When set, the previous QA run was cancelled/failed before producing a
+   *  verdict. We show what it managed to output and relabel the CTA. */
+  interruptedRun?: AgentRunDTO
 }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showPartial, setShowPartial] = useState(false)
 
   async function launch() {
     setBusy(true)
@@ -2133,16 +2157,44 @@ function LaunchQaInline({
     }
   }
 
+  const partialOutput = interruptedRun?.output?.trim()
+
   return (
-    <div className="rounded-md border border-border bg-bg-alt p-3">
-      <div className="text-[12px] text-text-soft">
-        Un agente revisor leerá el código + acceptance criteria y emitirá un veredicto
-        (APPROVED/REJECTED) con la lista de defectos. No modifica nada.
-      </div>
+    <div
+      className={`rounded-md border p-3 ${
+        interruptedRun ? 'border-warning/40 bg-warning/5' : 'border-border bg-bg-alt'
+      }`}
+    >
+      {interruptedRun ? (
+        <div className="text-[12px] text-text-soft">
+          La revisión QA anterior se cortó antes de emitir veredicto
+          {interruptedRun.status === 'cancelled' ? ' (cancelada)' : ' (falló)'}. No se aplicó ningún
+          cambio. Vuelve a lanzarla cuando quieras.
+          {partialOutput && (
+            <button
+              type="button"
+              onClick={() => setShowPartial((v) => !v)}
+              className="ml-1 text-brand hover:underline"
+            >
+              {showPartial ? 'ocultar' : 'ver'} lo que alcanzó a analizar
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="text-[12px] text-text-soft">
+          Un agente revisor leerá el código + acceptance criteria y emitirá un veredicto
+          (APPROVED/REJECTED) con la lista de defectos. No modifica nada.
+        </div>
+      )}
+      {interruptedRun && showPartial && partialOutput && (
+        <pre className="mt-2 text-[11px] font-mono whitespace-pre-wrap text-text-soft bg-bg-alt border border-border rounded-md px-2 py-1.5 max-h-48 overflow-y-auto">
+          {partialOutput.slice(-2000)}
+        </pre>
+      )}
       {error && <div className="mt-2 text-[12px] text-danger">{error}</div>}
       <div className="mt-3 flex justify-end">
         <Button variant="turtle" onClick={launch} disabled={busy}>
-          {busy ? 'Lanzando…' : '▶ Lanzar revisión QA'}
+          {busy ? 'Lanzando…' : interruptedRun ? '↻ Relanzar revisión QA' : '▶ Lanzar revisión QA'}
         </Button>
       </div>
     </div>

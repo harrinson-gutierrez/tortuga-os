@@ -689,8 +689,20 @@ export function stopAgentRunWorker(): void {
     clearInterval(interval)
     interval = null
   }
-  for (const [runId, runner] of inFlight) {
-    runner.cancel(runId)
+  // Deliberately do NOT cancel in-flight runs here. The sidecar is restarted
+  // routinely during development (Tauri's beforeDevCommand rebuilds it), and
+  // cancelling on every shutdown was marking long-running agent runs (QA,
+  // troubleshooter) as 'cancelled' mid-execution — the operator saw the step
+  // silently revert to "Launch QA" with no result. We leave the rows as
+  // 'running': if the child process truly died with the parent, the next
+  // boot's reapOrphanedRuns() will close it as orphaned after STALE_RUN_MS;
+  // if the restart was a no-op, the run keeps streaming. Explicit operator
+  // cancellation still works via cancelInFlightRun().
+  if (inFlight.size > 0) {
+    logger.warn(
+      { inFlight: inFlight.size },
+      'agent-run worker stopping with runs still in flight — left as running, not cancelled',
+    )
   }
 }
 
