@@ -15,6 +15,8 @@ export interface RunGatesResult {
   gates: GateDTO[]
 }
 
+const inFlightRuns = new Map<string, Promise<RunGatesResult>>()
+
 async function resolveContext(taskId: string) {
   const deps = coreDeps()
   const task = await deps.storage.getTaskById(taskId)
@@ -42,6 +44,25 @@ export async function runGatesForTask(
   stack: GateStack,
   gateTypes: GateType[],
 ): Promise<RunGatesResult> {
+  const pending = inFlightRuns.get(taskId)
+  if (pending) {
+    logger.warn({ taskId, gateTypes }, 'runGatesForTask: re-using in-flight run')
+    return pending
+  }
+  const promise = runGatesForTaskInner(taskId, stack, gateTypes)
+  inFlightRuns.set(taskId, promise)
+  try {
+    return await promise
+  } finally {
+    inFlightRuns.delete(taskId)
+  }
+}
+
+async function runGatesForTaskInner(
+  taskId: string,
+  stack: GateStack,
+  gateTypes: GateType[],
+): Promise<RunGatesResult> {
   const { deps, task, iteration, workspace } = await resolveContext(taskId)
 
   const executions: GateExecution[] = []
@@ -58,17 +79,6 @@ export async function runGatesForTask(
           gateType,
         }),
       )
-    } else if (gate.status !== 'pending') {
-      executions.push({
-        gateType,
-        status: 'skipped',
-        exitCode: null,
-        durationMs: 0,
-        outputPath: gate.outputPath ?? null,
-        reason: `gate already ${gate.status}; not rerunning in MVP`,
-      })
-      gates.push(gate)
-      continue
     }
 
     const exec = await executeGate(gateType, stack, workspace, task.code, iteration.n)
@@ -77,6 +87,7 @@ export async function runGatesForTask(
       await useCases.gates.recordGateOutcome(deps, gate.id, {
         status: exec.status,
         outputPath: exec.outputPath,
+        force: true,
       }),
     )
     gates.push(updated)

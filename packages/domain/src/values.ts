@@ -77,7 +77,7 @@ export const TASK_STATUSES = [
 ] as const
 export type TaskStatus = (typeof TASK_STATUSES)[number]
 
-export const ITERATION_OUTCOMES = ['approved', 'rejected', 'rework_requested'] as const
+export const ITERATION_OUTCOMES = ['approved', 'rejected', 'rework_requested', 'reopened'] as const
 export type IterationOutcome = (typeof ITERATION_OUTCOMES)[number]
 
 export const REWORK_ROOT_CAUSES = [
@@ -137,6 +137,16 @@ export const AGENT_KINDS = [
   // Runtime error troubleshooter: triggered from observed app errors
   // (paste / hook / logcat), produces structured diagnosis JSON.
   'troubleshooter',
+  // Scaffold repair agent: triggered when the deterministic scaffold
+  // pipeline fails N times. Reads the failing step logs + the pubspec
+  // and adjusts deps / templates until `flutter analyze` + `flutter
+  // test` pass.
+  'scaffold-fixer',
+  // Gate repair agent: triggered when a verification gate fails on any
+  // task. Reads the gate log + workspace, applies the fix (missing
+  // golden baseline, broken test, build config, etc), and re-runs the
+  // gate until it passes.
+  'gate-fixer',
 ] as const
 export type AgentKind = (typeof AGENT_KINDS)[number]
 

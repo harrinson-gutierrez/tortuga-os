@@ -1,11 +1,50 @@
 import { closeSync, existsSync, openSync, readSync, statSync } from 'node:fs'
 import { join } from 'node:path'
+import { systemPromptFor } from '@tortuga-os/agent-runner'
 import { GATE_TYPES, type GateType } from '@tortuga-os/contracts'
+import { useCases } from '@tortuga-os/core'
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { coreDeps } from '../../shared/core-deps'
+import { coreDeps, unwrap } from '../../shared/core-deps'
 import { workspacePathFor } from '../workspace/use-cases'
+import { commandFor } from './runner'
 import { type CleanResult, type RunGatesResult, cleanWorkspace, runGatesForTask } from './service'
+
+const RepairGateBody = z.object({
+  gateType: z.enum(GATE_TYPES),
+  gateLabel: z.string().min(1).max(200),
+  log: z.string().min(1),
+})
+
+function buildGateRepairPrompt(taskId: string, input: z.infer<typeof RepairGateBody>): string {
+  const tail = input.log.length > 8000 ? `…(truncated)…\n${input.log.slice(-8000)}` : input.log
+  return [
+    `# Gate repair request`,
+    ``,
+    `Task: ${taskId}`,
+    `Gate: ${input.gateType} (${input.gateLabel})`,
+    ``,
+    `Your workspace cwd resolves to the project root. Run flutter from`,
+    `\`05-build/app\` (e.g. \`cd 05-build/app && flutter test ...\`).`,
+    `Repair until the gate's exact command exits 0.`,
+    ``,
+    `## Failed gate log`,
+    ``,
+    '```',
+    tail,
+    '```',
+    ``,
+    `## What to do now`,
+    ``,
+    `1. Read the first lines of the log to find the exact command that ran (after \`[gate] $\`).`,
+    `2. Diagnose the failure in ONE sentence.`,
+    `3. Apply the fix (edit files, run pub add/remove, --update-goldens, etc).`,
+    `4. Re-run the exact same gate command.`,
+    `5. Iterate up to 3 times.`,
+    `6. Write a short \`GATE_REPAIR_NOTES.md\` at the workspace root summarising the fix.`,
+    `7. End your final message with a single line \`OK\` (success) or \`GAVE_UP: <reason>\`.`,
+  ].join('\n')
+}
 
 const StackSchema = z.enum(['flutter', 'nextjs', 'vite-react', 'angular', 'astro', 'node'])
 
@@ -94,12 +133,46 @@ export const gatesRunRouter = new Hono()
     return c.json({ offset: inputOffset, size, chunk, done })
   })
 
-  // Runs `flutter clean` (or stack equivalent) in the project workspace.
-  // Used to recover from transient Gradle/build-cache failures.
   .post('/clean/:taskId', async (c) => {
     const taskId = c.req.param('taskId')
     const raw = await c.req.json().catch(() => ({}))
     const body = CleanBody.parse(raw)
     const result: CleanResult = await cleanWorkspace(taskId, body.stack)
     return c.json(result, 200)
+  })
+
+  .post('/repair/:taskId', async (c) => {
+    const taskId = c.req.param('taskId')
+    const raw = await c.req.json().catch(() => ({}))
+    const body = RepairGateBody.safeParse(raw)
+    if (!body.success) return c.json({ error: body.error.message }, 400)
+    const systemPrompt = systemPromptFor('gate-fixer')
+    const userPrompt = buildGateRepairPrompt(taskId, body.data)
+    const result = await useCases.agentRuns.queueAgentRun(coreDeps(), {
+      taskId,
+      agentKind: 'gate-fixer',
+      provider: 'claude-cli',
+      systemPrompt,
+      userPrompt,
+    })
+    return c.json(unwrap(result), 201)
+  })
+
+  .get('/preview', (c) => {
+    const stackRaw = c.req.query('stack') ?? 'flutter'
+    const parsed = StackSchema.safeParse(stackRaw)
+    if (!parsed.success) return c.json({ error: `unknown stack: ${stackRaw}` }, 400)
+    const stack = parsed.data
+    const gatesRaw = (c.req.query('gates') ?? '').split(',').filter(Boolean)
+    const gates = (
+      gatesRaw.length > 0
+        ? gatesRaw.filter((g): g is GateType => GATE_TYPES.includes(g as GateType))
+        : (GATE_TYPES as readonly GateType[])
+    ).map((type) => {
+      const cmd = commandFor(type, stack)
+      return cmd
+        ? { type, cmd: cmd.cmd, args: cmd.args, supported: true as const }
+        : { type, cmd: null, args: [], supported: false as const }
+    })
+    return c.json({ stack, gates })
   })

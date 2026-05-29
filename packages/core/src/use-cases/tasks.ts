@@ -4,6 +4,7 @@ import type {
   IterationDTO,
   PatchTaskInput,
   RejectTaskInput,
+  ReopenTaskInput,
   TaskDTO,
 } from '@tortuga-os/contracts'
 import { applyTaskEvent } from '@tortuga-os/domain'
@@ -163,47 +164,7 @@ export async function approveTask(
     nextIteration: null,
   })
 
-  // Cascade upward: when the last sibling task of a story is approved,
-  // the story closes; when the last sibling story of a phase is
-  // approved, the phase closes. Errors here are logged but do NOT
-  // unroll the task approval — the cascade is best-effort and idempotent
-  // (re-approving a sibling later still picks up the state correctly).
-  void cascadeOnTaskApproval(storage, row, at).catch(() => {
-    /* swallow; storage will be reconciled on next read */
-  })
-
   return ucOk(taskDTO(row))
-}
-
-async function cascadeOnTaskApproval(
-  storage: CoreDeps['storage'],
-  task: { storyId: string },
-  at: number,
-): Promise<void> {
-  const siblings = await storage.listTasksForStory(task.storyId)
-  const allApproved = siblings.length > 0 && siblings.every((t) => t.status === 'approved')
-  if (!allApproved) return
-
-  const story = await storage.getStoryById(task.storyId)
-  if (!story || story.status === 'approved') return
-  await storage.updateStoryStatus({ storyId: story.id, status: 'approved', now: at })
-
-  // Phase-level cascade: check all stories in the same quote (= phase).
-  const stories = await storage.listStoriesForQuote(story.quoteId)
-  const allStoriesApproved =
-    stories.length > 0 && stories.every((s) => s.id === story.id || s.status === 'approved')
-  if (!allStoriesApproved) return
-
-  const quote = await storage.getQuoteById(story.quoteId)
-  if (!quote) return
-  const phase = await storage.getPhaseById(quote.phaseId)
-  if (!phase || phase.status === 'approved') return
-  await storage.updatePhaseStatus({
-    phaseId: phase.id,
-    status: 'approved',
-    closedAt: at,
-    now: at,
-  })
 }
 
 export async function rejectTask(
@@ -252,6 +213,56 @@ export async function rejectTask(
       now: at,
     },
   })
+  return ucOk(taskDTO(row))
+}
+
+export async function reopenTask(
+  { storage, newId, now }: CoreDeps,
+  id: string,
+  input: ReopenTaskInput,
+): Promise<UseCaseResult<TaskDTO>> {
+  const existing = await storage.getTaskById(id)
+  if (!existing) return notFound('task', id)
+  const transition = applyTaskEvent(
+    {
+      type: existing.type,
+      ownerRole: existing.ownerRole,
+      status: existing.status,
+      currentIteration: existing.currentIteration,
+      estimatedHoursMin: existing.estimatedHoursMin,
+      actualHoursMin: existing.actualHoursMin,
+    },
+    { kind: 'reopen' },
+  )
+  if (!transition.ok) return state(transition.error.message)
+
+  const currentIter = await storage.getCurrentIteration(id)
+  if (!currentIter) return notFound('current iteration of task', id)
+
+  const at = now()
+  const nextN = existing.currentIteration + 1
+  const row = await storage.closeIterationAndAdvanceTask({
+    close: {
+      iterationId: currentIter.id,
+      now: at,
+      outcome: 'reopened',
+      closedByRole: input.closedByRole,
+      notes: input.notes ?? null,
+    },
+    taskUpdate: {
+      taskId: id,
+      status: 'in_progress',
+      currentIteration: nextN,
+      now: at,
+    },
+    nextIteration: {
+      iterationId: newId(),
+      taskId: id,
+      n: nextN,
+      now: at,
+    },
+  })
+
   return ucOk(taskDTO(row))
 }
 

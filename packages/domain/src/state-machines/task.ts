@@ -30,6 +30,7 @@ export type TaskEvent =
   | { kind: 'approve' }
   | { kind: 'reject' }
   | { kind: 'restart' }
+  | { kind: 'reopen' }
 
 export function applyTaskEvent(snapshot: TaskSnapshot, event: TaskEvent): Result<TaskSnapshot> {
   switch (event.kind) {
@@ -52,19 +53,27 @@ export function applyTaskEvent(snapshot: TaskSnapshot, event: TaskEvent): Result
       return ok({ ...snapshot, status: 'qa' })
 
     case 'approve':
-      if (snapshot.status !== 'qa') {
+      if (
+        snapshot.status !== 'qa' &&
+        snapshot.status !== 'in_progress' &&
+        snapshot.status !== 'rework'
+      ) {
         return err(
           'invalid_status_transition',
-          `task can only be approved from 'qa'; current status is '${snapshot.status}'`,
+          `task can only be approved from 'qa', 'in_progress' or 'rework'; current status is '${snapshot.status}'`,
         )
       }
       return ok({ ...snapshot, status: 'approved' })
 
     case 'reject':
-      if (snapshot.status !== 'qa') {
+      if (
+        snapshot.status !== 'qa' &&
+        snapshot.status !== 'in_progress' &&
+        snapshot.status !== 'rework'
+      ) {
         return err(
           'invalid_status_transition',
-          `task can only be rejected from 'qa'; current status is '${snapshot.status}'`,
+          `task can only be rejected from 'qa', 'in_progress' or 'rework'; current status is '${snapshot.status}'`,
         )
       }
       return ok({
@@ -81,6 +90,19 @@ export function applyTaskEvent(snapshot: TaskSnapshot, event: TaskEvent): Result
         )
       }
       return ok({ ...snapshot, status: 'in_progress' })
+
+    case 'reopen':
+      if (snapshot.status !== 'approved' && snapshot.status !== 'rejected') {
+        return err(
+          'invalid_status_transition',
+          `task can only reopen from 'approved' or 'rejected'; current status is '${snapshot.status}'`,
+        )
+      }
+      return ok({
+        ...snapshot,
+        status: 'in_progress',
+        currentIteration: snapshot.currentIteration + 1,
+      })
   }
 }
 

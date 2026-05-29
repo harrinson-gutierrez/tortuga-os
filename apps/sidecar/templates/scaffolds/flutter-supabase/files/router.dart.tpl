@@ -16,11 +16,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(
         path: '/',
-        builder: (_, __) => const _PlaceholderHome(),
+        builder: (context, state) => const _PlaceholderHome(),
       ),
       GoRoute(
         path: '/login',
-        builder: (_, __) => const _PlaceholderLogin(),
+        builder: (context, state) => const _PlaceholderLogin(),
       ),
     ],
   );

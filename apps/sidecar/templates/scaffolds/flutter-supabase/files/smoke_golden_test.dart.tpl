@@ -1,13 +1,27 @@
+import 'package:alchemist/alchemist.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:golden_toolkit/golden_toolkit.dart';
 
 void main() {
-  testGoldens('seed golden — empty scaffold renders', (tester) async {
-    await tester.pumpWidgetBuilder(
-      const Scaffold(body: Center(child: Text('scaffold'))),
-      wrapper: materialAppWrapper(theme: ThemeData.light(useMaterial3: true)),
-    );
-    await screenMatchesGolden(tester, 'scaffold_empty');
-  });
+  goldenTest(
+    'seed golden — empty scaffold renders consistently',
+    fileName: 'scaffold_empty',
+    builder: () => GoldenTestGroup(
+      children: [
+        GoldenTestScenario(
+          name: 'light',
+          child: const MaterialApp(
+            home: Scaffold(body: Center(child: Text('scaffold'))),
+          ),
+        ),
+        GoldenTestScenario(
+          name: 'dark',
+          child: MaterialApp(
+            theme: ThemeData.dark(useMaterial3: true),
+            home: const Scaffold(body: Center(child: Text('scaffold'))),
+          ),
+        ),
+      ],
+    ),
+  );
 }

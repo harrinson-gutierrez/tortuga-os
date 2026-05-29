@@ -1,4 +1,9 @@
-import type { CreateGateInput, GateDTO, RecordGateOutcomeInput } from '@tortuga-os/contracts'
+import type {
+  CreateGateInput,
+  GateDTO,
+  GateType,
+  RecordGateOutcomeInput,
+} from '@tortuga-os/contracts'
 import type { CoreDeps } from '../deps'
 import { type UseCaseResult, conflict, notFound, state, ucOk, validation } from '../errors'
 import { gateDTO } from '../mappers'
@@ -66,4 +71,17 @@ export async function recordGateOutcome(
     now: now(),
   })
   return ucOk(gateDTO(row))
+}
+
+export async function resetGatesForTask(
+  { storage }: CoreDeps,
+  taskId: string,
+  types: GateType[],
+): Promise<UseCaseResult<{ deleted: number }>> {
+  const task = await storage.getTaskById(taskId)
+  if (!task) return notFound('task', taskId)
+  const iter = await storage.getCurrentIteration(taskId)
+  if (!iter) return notFound('current iteration of task', taskId)
+  const deleted = await storage.deleteGatesForIteration({ iterationId: iter.id, types })
+  return ucOk({ deleted })
 }

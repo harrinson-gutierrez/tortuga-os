@@ -414,3 +414,18 @@ export interface TroubleshootReportRow {
   createdAt: number
   updatedAt: number
 }
+
+export type StepAckKind = 'ok' | 'fail'
+
+export interface StepAckRow {
+  id: string
+  taskId: string
+  iterationN: number
+  stepId: string
+  ack: StepAckKind
+  ackedByRole: Role
+  notes: string | null
+  ackedAt: number
+  createdAt: number
+  updatedAt: number
+}

@@ -54,6 +54,8 @@ import type {
   QuoteRow,
   RoleRateRow,
   SecretRow,
+  StepAckKind,
+  StepAckRow,
   StoryRow,
   TaskRow,
   TroubleshootReportRow,
@@ -517,6 +519,7 @@ export interface Storage {
   countGateForIteration(iterationId: string, gateType: GateType): Promise<number>
   createGate(args: CreateGateArgs): Promise<GateRow>
   recordGateOutcome(args: RecordGateOutcomeArgs): Promise<GateRow>
+  deleteGatesForIteration(args: { iterationId: string; types: GateType[] }): Promise<number>
 
   getEvidenceById(id: string): Promise<EvidenceRow | null>
   listEvidenceForIteration(iterationId: string): Promise<EvidenceRow[]>
@@ -675,6 +678,21 @@ export interface Storage {
   listTroubleshootReportsByStatus(status: TroubleshootStatus): Promise<TroubleshootReportRow[]>
   createTroubleshootReport(args: CreateTroubleshootReportArgs): Promise<TroubleshootReportRow>
   patchTroubleshootReport(args: PatchTroubleshootReportArgs): Promise<TroubleshootReportRow>
+
+  listStepAcksForTaskIteration(taskId: string, iterationN: number): Promise<StepAckRow[]>
+  upsertStepAck(args: UpsertStepAckArgs): Promise<StepAckRow>
+  deleteStepAck(args: { taskId: string; iterationN: number; stepId: string }): Promise<void>
+}
+
+export interface UpsertStepAckArgs {
+  id: string
+  taskId: string
+  iterationN: number
+  stepId: string
+  ack: StepAckKind
+  ackedByRole: Role
+  notes: string | null
+  now: number
 }
 
 export interface CreateAgentRunArgs {

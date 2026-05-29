@@ -26,7 +26,7 @@ interface GateCommand {
   timeoutMs: number
 }
 
-function commandFor(gateType: GateType, stack: GateStack): GateCommand | null {
+export function commandFor(gateType: GateType, stack: GateStack): GateCommand | null {
   if (gateType === 'G1_ANALYZE') {
     if (stack === 'flutter')
       return { cmd: 'flutter', args: ['analyze', '--no-pub'], timeoutMs: ANALYZE_TIMEOUT_MS }

@@ -37,11 +37,27 @@
       "cwd": "05-build/app"
     },
     {
-      "id": "pub-add-dev-deps",
-      "label": "Instalar dependencias de tests (mocktail, golden_toolkit, integration_test)",
+      "id": "pub-add-dev-mocktail",
+      "label": "Instalar mocktail (testing)",
       "type": "bash",
       "command": "flutter",
-      "args": ["pub", "add", "--dev", "mocktail", "golden_toolkit", "integration_test"],
+      "args": ["pub", "add", "--dev", "mocktail"],
+      "cwd": "05-build/app"
+    },
+    {
+      "id": "pub-add-dev-integration-test",
+      "label": "Instalar integration_test (Flutter SDK)",
+      "type": "bash",
+      "command": "flutter",
+      "args": ["pub", "add", "--dev", "--sdk=flutter", "integration_test"],
+      "cwd": "05-build/app"
+    },
+    {
+      "id": "pub-add-dev-alchemist",
+      "label": "Instalar alchemist (golden tests sin platform-quirks)",
+      "type": "bash",
+      "command": "flutter",
+      "args": ["pub", "add", "--dev", "alchemist"],
       "cwd": "05-build/app"
     }
   ],
@@ -83,8 +99,16 @@
       "fromTemplate": "files/smoke_golden_test.dart.tpl"
     },
     {
+      "to": "05-build/app/test/widget_test.dart",
+      "fromTemplate": "files/widget_test.dart.tpl"
+    },
+    {
       "to": "05-build/app/integration_test/app_boot_test.dart",
       "fromTemplate": "files/app_boot_test.dart.tpl"
+    },
+    {
+      "to": "05-build/app/integration_test/app_golden_test.dart",
+      "fromTemplate": "files/app_golden_test.dart.tpl"
     },
     {
       "to": "05-build/app/test/README.md",
@@ -96,12 +120,19 @@
       "id": "analyze",
       "label": "Verificar tipos",
       "command": "flutter",
-      "args": ["analyze", "--no-pub"],
+      "args": ["analyze", "--no-pub", "--no-fatal-infos"],
+      "cwd": "05-build/app"
+    },
+    {
+      "id": "generate-goldens",
+      "label": "Generar baselines de goldens (seed)",
+      "command": "flutter",
+      "args": ["test", "--update-goldens", "test/smoke_golden_test.dart"],
       "cwd": "05-build/app"
     },
     {
       "id": "test",
-      "label": "Correr unit + widget + golden tests",
+      "label": "Correr unit + widget + golden tests (host)",
       "command": "flutter",
       "args": ["test", "--reporter=expanded"],
       "cwd": "05-build/app"
