@@ -228,7 +228,12 @@ export const tasks = sqliteTable('tasks', {
   ...tsCols,
 })
 
-export const iterationOutcomeValues = ['approved', 'rejected', 'rework_requested'] as const
+export const iterationOutcomeValues = [
+  'approved',
+  'rejected',
+  'rework_requested',
+  'reopened',
+] as const
 export type IterationOutcome = (typeof iterationOutcomeValues)[number]
 
 export const iterations = sqliteTable(
@@ -409,6 +414,8 @@ export const agentKindValues = [
   'sales',
   'pm',
   'troubleshooter',
+  'scaffold-fixer',
+  'gate-fixer',
 ] as const
 export type AgentKind = (typeof agentKindValues)[number]
 
@@ -710,5 +717,29 @@ export const troubleshootReports = sqliteTable(
   (t) => ({
     byTask: index('troubleshoot_reports_task_idx').on(t.taskId),
     byStatus: index('troubleshoot_reports_status_idx').on(t.status),
+  }),
+)
+
+export const stepAckValues = ['ok', 'fail'] as const
+export type StepAck = (typeof stepAckValues)[number]
+
+export const stepAcks = sqliteTable(
+  'step_acks',
+  {
+    id: text('id').primaryKey(),
+    taskId: text('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    iterationN: integer('iteration_n').notNull(),
+    stepId: text('step_id').notNull(),
+    ack: text('ack', { enum: stepAckValues }).notNull(),
+    ackedByRole: text('acked_by_role', { enum: roleValues }).notNull(),
+    notes: text('notes'),
+    ackedAt: integer('acked_at').notNull(),
+    ...tsCols,
+  },
+  (t) => ({
+    uniqueAck: unique('step_acks_task_iter_step_uq').on(t.taskId, t.iterationN, t.stepId),
+    byTaskIter: index('step_acks_task_iter_idx').on(t.taskId, t.iterationN),
   }),
 )

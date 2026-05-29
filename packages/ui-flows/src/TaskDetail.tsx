@@ -5,6 +5,7 @@ import type {
   GateType,
   IterationDTO,
   QaVerdictResponseDTO,
+  StepAckDTO,
 } from '@tortuga-os/contracts'
 import { AGENT_KINDS, AGENT_PROVIDERS } from '@tortuga-os/contracts'
 import type { ProjectStack as DBProjectStack } from '@tortuga-os/contracts'
@@ -12,8 +13,8 @@ import { Badge, Button, Card, Eyebrow, Select, Stack, TextField } from '@tortuga
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AgentRunsPanel } from './AgentRunsPanel'
 import { GatesPanel } from './GatesPanel'
-import { ScaffoldPanel } from './ScaffoldPanel'
-import { TroubleshootStepBody } from './TroubleshootShell'
+import { CoworkerLiveView, ScaffoldPanel } from './ScaffoldPanel'
+import { AppFailedDiagnose, TroubleshootStepBody } from './TroubleshootShell'
 import { WorkspacePanel } from './WorkspacePanel'
 import { useAsyncData } from './useAsyncData'
 
@@ -78,6 +79,8 @@ const AGENT_LABEL: Record<(typeof AGENT_KINDS)[number], string> = {
   tech_lead: 'Tech lead',
   arch: 'Arquitecto',
   troubleshooter: 'Diagnóstico de errores',
+  'scaffold-fixer': 'Reparador de scaffold',
+  'gate-fixer': 'Reparador de gates',
 }
 
 const PROVIDER_LABEL: Record<(typeof AGENT_PROVIDERS)[number], string> = {
@@ -106,10 +109,12 @@ export function TaskDetail({
   // while the agent's transcript streams in.
   const [globalKey, setGlobalKey] = useState(0)
   const [runsKey, setRunsKey] = useState(0)
+  const [gatesKey, setGatesKey] = useState(0)
   const bump = () => {
     setGlobalKey((k) => k + 1)
     onChanged?.()
   }
+  const bumpGates = () => setGatesKey((k) => k + 1)
 
   const task = useAsyncData(() => client.tasks.get(taskId), [client, taskId, refreshKey, globalKey])
   const iterations = useAsyncData(
@@ -123,7 +128,20 @@ export function TaskDetail({
   const currentIter = iterations.data?.[0] ?? null
   const gates = useAsyncData(
     () => (currentIter ? client.gates.listForIteration(currentIter.id) : Promise.resolve([])),
-    [client, currentIter?.id, refreshKey, globalKey],
+    [client, currentIter?.id, refreshKey, globalKey, gatesKey],
+  )
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: bumpGates is stable; only react to gates.data
+  useEffect(() => {
+    const hasRunning = gates.data?.some((g) => g.status === 'pending')
+    if (!hasRunning) return
+    const t = setInterval(bumpGates, 1500)
+    return () => clearInterval(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gates.data])
+  const stepAcks = useAsyncData(
+    () => client.tasks.listStepAcks(taskId),
+    [client, taskId, refreshKey, globalKey],
   )
 
   // Split active-run detection by kind. The wizard has two distinct steps
@@ -176,13 +194,13 @@ export function TaskDetail({
     [client, qaRunDoneId, refreshKey, globalKey, runsKey],
   )
 
-  if (task.error)
+  if (task.error && !task.data)
     return (
       <Card>
         <div className="text-[13px] text-danger">{task.error}</div>
       </Card>
     )
-  if (task.loading || !task.data)
+  if (!task.data)
     return (
       <Card>
         <div className="text-[13px] text-text-muted">Cargando tarea…</div>
@@ -236,6 +254,7 @@ export function TaskDetail({
     fidelityGate,
     bootGate,
     gatesPassed,
+    stepAcks: stepAcks.data ?? [],
     refreshKey: refreshKey + globalKey,
     onChanged: bump,
   })
@@ -345,6 +364,7 @@ function buildSteps(args: {
   fidelityGate: GateDTO | null
   bootGate: GateDTO | null
   gatesPassed: boolean
+  stepAcks: StepAckDTO[]
   refreshKey: number
   onChanged: () => void
 }): Step[] {
@@ -367,9 +387,12 @@ function buildSteps(args: {
     fidelityGate,
     bootGate,
     gatesPassed,
+    stepAcks,
     refreshKey,
     onChanged,
   } = args
+  const ackByStepId = new Map(stepAcks.map((a) => [a.stepId, a]))
+  const ackOf = (stepId: string): StepAckDTO | null => ackByStepId.get(stepId) ?? null
   // hasActiveQaRun is kept on the args type for symmetry with hasActiveDevRun
   // and to make future step-QA logic easier; the step currently derives its
   // own active flag from qaRuns[0].status. Suppress unused destructure.
@@ -487,22 +510,8 @@ function buildSteps(args: {
           <ScaffoldPanel
             client={client}
             projectCode={projectCode}
+            taskId={taskId}
             onDone={() => onChanged()}
-            onApproveTask={async () => {
-              // Arch tasks skip the QA loop: the scaffold itself ran
-              // `flutter analyze` as verification. Submit + approve in
-              // one click to unblock impl tasks immediately.
-              try {
-                await client.tasks.submitQa(taskId)
-              } catch {
-                /* may already be in 'qa'; ignore */
-              }
-              await client.tasks.approve(taskId, {
-                closedByRole: 'tech_lead',
-                notes: 'Scaffold determinístico ejecutado y verificado.',
-              })
-              onChanged()
-            }}
           />
         )
       }
@@ -606,11 +615,21 @@ function buildSteps(args: {
         ? 'La verificación falló'
         : 'Verificar el código',
     hint: gatesPassed
-      ? 'Tipos OK + compila bien.'
+      ? ackOf('verify')?.ack === 'ok'
+        ? 'Tipos OK + compila bien (confirmado por ti).'
+        : 'Tipos OK + compila bien. Pendiente tu confirmación.'
       : anyGateFailed
         ? 'Revisa el error abajo y decide cómo seguir.'
         : 'Corre los chequeos automáticos (tipos + build).',
-    status: !agentDone ? 'todo' : gatesPassed ? 'done' : anyGateFailed ? 'blocked' : 'current',
+    status: !agentDone
+      ? 'todo'
+      : gatesPassed
+        ? ackOf('verify')?.ack === 'ok'
+          ? 'done'
+          : 'current'
+        : anyGateFailed
+          ? 'blocked'
+          : 'current',
     body:
       agentDone && !gatesPassed && !isApproved && !isRejected && !inQa ? (
         <VerifyInline
@@ -626,6 +645,30 @@ function buildSteps(args: {
           bootGate={bootGate}
           onChanged={onChanged}
         />
+      ) : gatesPassed && !isApproved && !isRejected ? (
+        <>
+          <GatesSummary
+            client={client}
+            taskId={taskId}
+            stack={stack}
+            analyzeGate={analyzeGate}
+            buildGate={buildGate}
+            realWorkGate={realWorkGate}
+            fidelityGate={fidelityGate}
+            bootGate={bootGate}
+            runningGates={[]}
+          />
+          <StepAckPanel
+            client={client}
+            taskId={taskId}
+            stepId="verify"
+            ack={ackOf('verify')}
+            canAck
+            label="Verificación del código"
+            onChanged={onChanged}
+          />
+          <RereverifyInline client={client} taskId={taskId} stack={stack} onChanged={onChanged} />
+        </>
       ) : null,
   }
 
@@ -656,10 +699,14 @@ function buildSteps(args: {
         body:
           gatesPassed && inProgress && !manuallyTested ? (
             <ManualTestInline
+              client={client}
+              taskId={taskId}
+              refreshKey={refreshKey}
               onConfirm={() => {
                 window.localStorage.setItem(manualTestKey, '1')
                 onChanged()
               }}
+              onChanged={onChanged}
             />
           ) : null,
       }
@@ -684,12 +731,18 @@ function buildSteps(args: {
       }
     : null
 
-  const canRunQa = gatesPassed && inProgress && (manuallyTested || !isFlutterImpl)
+  const inWork = inProgress || task.status === 'rework'
+  const canRunQa = gatesPassed && inWork && (manuallyTested || !isFlutterImpl)
 
   const { qaRuns, qaVerdictResp } = args
   const qaRun: AgentRunDTO | null = qaRuns[0] ?? null
   const qaActive = qaRun?.status === 'queued' || qaRun?.status === 'running'
   const qaDone = qaRun?.status === 'succeeded'
+  // The QA agent was interrupted (sidecar restart mid-run, manual cancel, or
+  // crash) before it could write a verdict. Without an explicit branch the
+  // step silently falls back to "Launch QA" and the operator can't tell the
+  // run was aborted vs never started — so we surface it.
+  const qaInterrupted = qaRun?.status === 'cancelled' || qaRun?.status === 'failed'
   // A QA verdict is only meaningful if no dev/impl run has started AFTER it
   // — once the operator asks the dev agent to fix the defects, the previous
   // verdict refers to stale code. We detect this by comparing createdAt
@@ -730,7 +783,9 @@ function buildSteps(args: {
             ? 'QA automática encontró problemas'
             : qaVerdictMissing
               ? 'QA terminó sin veredicto válido'
-              : 'Pasar por QA automática',
+              : qaInterrupted
+                ? 'QA se interrumpió'
+                : 'Pasar por QA automática',
     hint: inQa
       ? 'Esperando tu decisión final abajo.'
       : qaActive
@@ -741,9 +796,11 @@ function buildSteps(args: {
             ? 'Revisa los defectos abajo y decide si los corriges o aprobar igual bajo tu criterio.'
             : qaVerdictMissing
               ? 'El agente respondió pero no escribió qa-verdict.json ni un bloque "## Verdict". Relánzalo o aprueba/rechaza tú directamente.'
-              : isFlutterImpl && !manuallyTested
-                ? 'Primero confirma que probaste la app en el emulador (paso anterior).'
-                : 'Lanza un agente revisor que audita acceptance criteria + lint.',
+              : qaInterrupted
+                ? 'La revisión se cortó antes de terminar (suele pasar si recargaste o el sidecar reinició mientras corría). Relánzala.'
+                : isFlutterImpl && !manuallyTested
+                  ? 'Primero confirma que probaste la app en el emulador (paso anterior).'
+                  : 'Lanza un agente revisor que audita acceptance criteria + lint.',
     status:
       isApproved || isRejected
         ? 'done'
@@ -757,9 +814,11 @@ function buildSteps(args: {
                 ? 'blocked'
                 : qaVerdictMissing
                   ? 'blocked'
-                  : canRunQa
-                    ? 'current'
-                    : 'todo',
+                  : qaInterrupted
+                    ? 'blocked'
+                    : canRunQa
+                      ? 'current'
+                      : 'todo',
     body:
       isApproved || isRejected || inQa ? null : qaActive && qaRun ? (
         <RunTranscript run={qaRun} live client={client} onChanged={onChanged} />
@@ -782,6 +841,14 @@ function buildSteps(args: {
           editedFiles={editedFiles}
           onChanged={onChanged}
         />
+      ) : qaInterrupted && qaRun ? (
+        <LaunchQaInline
+          client={client}
+          taskId={taskId}
+          editedFiles={editedFiles}
+          onLaunched={onChanged}
+          interruptedRun={qaRun}
+        />
       ) : canRunQa ? (
         <LaunchQaInline
           client={client}
@@ -797,8 +864,7 @@ function buildSteps(args: {
   // deterministic gates already proved the code builds, types check, and
   // tests pass. Allow approve without waiting for the QA agent.
   const gatesAutoApprove = gatesPassed && (manuallyTested || !isFlutterImpl)
-  const canApprove =
-    (qaApproved || qaRejected || qaVerdictMissing || gatesAutoApprove) && inProgress
+  const canApprove = (qaApproved || qaRejected || qaVerdictMissing || gatesAutoApprove) && inWork
   const stepApprove: Step = {
     id: 'approve',
     title: isApproved ? 'Aprobada ✓' : isRejected ? 'Rechazada' : 'Aprobar o rechazar',
@@ -829,6 +895,13 @@ function buildSteps(args: {
         taskId={taskId}
         manualTestKey={manualTestKey}
         needsSubmit
+        onChanged={onChanged}
+      />
+    ) : isApproved || isRejected ? (
+      <ReopenInline
+        client={client}
+        taskId={taskId}
+        wasApproved={isApproved}
         onChanged={onChanged}
       />
     ) : null,
@@ -906,7 +979,61 @@ function stepTitleClass(status: StepStatus): string {
   }
 }
 
-function ManualTestInline({ onConfirm }: { onConfirm: () => void }) {
+function ManualTestInline({
+  client,
+  taskId,
+  refreshKey,
+  onConfirm,
+  onChanged,
+}: {
+  client: ApiClient
+  taskId: string
+  refreshKey: number
+  onConfirm: () => void
+  onChanged: () => void
+}) {
+  // 'steps'    → instructions + the two CTAs (works / failed)
+  // 'diagnose' → the failure composer (auto-log + note + screenshot)
+  // 'reports'  → after a report exists: live troubleshooter output inline,
+  //              so the operator never leaves the manual-test step to see
+  //              the fix happen. This is what breaks the old catch-22 where
+  //              the troubleshoot step was hidden behind "marked as tested".
+  const [mode, setMode] = useState<'steps' | 'diagnose' | 'reports'>('steps')
+
+  if (mode === 'diagnose') {
+    return (
+      <AppFailedDiagnose
+        client={client}
+        taskId={taskId}
+        onCancel={() => setMode('steps')}
+        onCreated={() => {
+          setMode('reports')
+          onChanged()
+        }}
+      />
+    )
+  }
+
+  if (mode === 'reports') {
+    return (
+      <div className="space-y-3">
+        <div className="rounded-md border border-warning/40 bg-warning/5 p-3 text-[12.5px] text-text-soft">
+          El agente está diagnosticando el error. Cuando termine, aplica el fix, vuelve a correr la
+          app y —si ya funciona— marca como probado.
+        </div>
+        <TroubleshootStepBody client={client} taskId={taskId} refreshKey={refreshKey} />
+        <div className="flex items-center justify-between gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setMode('steps')}>
+            ← Volver a los pasos
+          </Button>
+          <Button variant="turtle" size="sm" onClick={onConfirm}>
+            ✓ Ya funciona, marcar como probado
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="rounded-md border border-border bg-bg-alt p-3">
       <div className="text-[12px] text-text-soft">Sigue estos pasos a la derecha:</div>
@@ -919,7 +1046,10 @@ function ManualTestInline({ onConfirm }: { onConfirm: () => void }) {
         </li>
         <li>Verifica que la app abra y la pantalla nueva funcione</li>
       </ol>
-      <div className="mt-3 flex justify-end">
+      <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+        <Button variant="ghost" size="sm" onClick={() => setMode('diagnose')}>
+          ✕ La app no abre / falló → diagnosticar
+        </Button>
         <Button variant="turtle" size="sm" onClick={onConfirm}>
           ✓ Funciona, marcar como probado
         </Button>
@@ -1091,16 +1221,35 @@ function VerifyInline({
 }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [needsEmulator, setNeedsEmulator] = useState(false)
+  const [recheckBusy, setRecheckBusy] = useState(false)
+  const isFlutter = stack === 'flutter'
+
+  async function hasLiveDevice(): Promise<boolean> {
+    try {
+      const { devices } = await client.preview.listDevices()
+      return devices.some((d) => d.state === 'device')
+    } catch {
+      return false
+    }
+  }
 
   async function run() {
     setBusy(true)
     setError(null)
+    setNeedsEmulator(false)
     const y = window.scrollY
     try {
-      await client.gates.runForTask(taskId, {
-        stack,
-        gates: ['G1_ANALYZE', 'G3_BUILD', 'G6_REAL_WORK', 'G5_FIDELITY', 'G4_BOOT'],
-      })
+      const gatesToRun: GateType[] = ['G1_ANALYZE', 'G3_BUILD', 'G6_REAL_WORK', 'G5_FIDELITY']
+      if (isFlutter) {
+        const hasDevice = await hasLiveDevice()
+        if (!hasDevice) {
+          setNeedsEmulator(true)
+        } else {
+          gatesToRun.push('G4_BOOT')
+        }
+      }
+      await client.gates.runForTask(taskId, { stack, gates: gatesToRun })
       onChanged()
       requestAnimationFrame(() => {
         window.scrollTo({ top: y, left: 0, behavior: 'instant' as ScrollBehavior })
@@ -1109,6 +1258,24 @@ function VerifyInline({
       setError((e as Error).message)
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function recheckAndRunBoot() {
+    setRecheckBusy(true)
+    try {
+      const hasDevice = await hasLiveDevice()
+      if (!hasDevice) {
+        setRecheckBusy(false)
+        return
+      }
+      setNeedsEmulator(false)
+      await client.gates.runForTask(taskId, { stack, gates: ['G4_BOOT'] })
+      onChanged()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setRecheckBusy(false)
     }
   }
 
@@ -1125,41 +1292,55 @@ function VerifyInline({
 
   return (
     <div className="space-y-3">
-      <div className="rounded-md border border-border bg-bg-alt p-3">
-        <div className="text-[12px] text-text-muted">Esto correrá:</div>
-        <ul className="mt-2 text-[12px] text-text space-y-1">
-          <li>
-            • Revisar errores de tipos{' '}
-            {analyzeGate && <GateBadgeInline status={analyzeGate.status} />}
-          </li>
-          <li>• Compilar la app {buildGate && <GateBadgeInline status={buildGate.status} />}</li>
-          <li>
-            • Correr unit + widget tests{' '}
-            {realWorkGate && <GateBadgeInline status={realWorkGate.status} />}
-          </li>
-          <li>
-            • Correr golden tests (UI snapshots){' '}
-            {fidelityGate && <GateBadgeInline status={fidelityGate.status} />}
-          </li>
-          <li>
-            • Boot smoke en emulador (integration){' '}
-            {bootGate && <GateBadgeInline status={bootGate.status} />}
-          </li>
-        </ul>
-        {error && <div className="mt-2 text-[12px] text-danger">{error}</div>}
-        <div className="mt-3 flex justify-end">
-          <Button variant="turtle" onClick={run} disabled={busy}>
-            {busy ? 'Verificando…' : failedGate ? '▶ Reintentar verificación' : '▶ Verificar ahora'}
-          </Button>
-        </div>
+      <GatesSummary
+        client={client}
+        taskId={taskId}
+        stack={stack}
+        analyzeGate={analyzeGate}
+        buildGate={buildGate}
+        realWorkGate={realWorkGate}
+        fidelityGate={fidelityGate}
+        bootGate={bootGate}
+        runningGates={
+          busy
+            ? (() => {
+                const ordered: Array<[GateType, GateDTO | null]> = [
+                  ['G1_ANALYZE', analyzeGate],
+                  ['G3_BUILD', buildGate],
+                  ['G6_REAL_WORK', realWorkGate],
+                  ['G5_FIDELITY', fidelityGate],
+                  ['G4_BOOT', bootGate],
+                ]
+                const firstPending = ordered.find(([, g]) => !g || g.status === 'pending')
+                return firstPending ? [firstPending[0]] : []
+              })()
+            : []
+        }
+      />
+      {error && <div className="text-[12px] text-danger">{error}</div>}
+      <div className="flex justify-end">
+        <Button variant="turtle" onClick={run} disabled={busy}>
+          {busy ? 'Verificando…' : failedGate ? '▶ Reintentar verificación' : '▶ Verificar ahora'}
+        </Button>
       </div>
 
-      {busy && (
-        <GateLiveLog
-          client={client}
-          taskId={taskId}
-          gates={['G1_ANALYZE', 'G3_BUILD', 'G6_REAL_WORK', 'G5_FIDELITY', 'G4_BOOT']}
-        />
+      {needsEmulator && (
+        <div className="rounded-md border border-warning/40 bg-warning/5 p-4">
+          <div className="text-[13px] text-warning font-medium">
+            ⚠ Boot smoke necesita un emulador encendido
+          </div>
+          <div className="mt-1 text-[12px] text-text-soft">
+            No detecté ningún dispositivo conectado por adb. Levanta un emulador desde el panel del
+            lado (o conecta un Android físico), espera a que aparezca como <code>device</code>, y
+            luego presiona <strong>↻ Validar de nuevo</strong>. Los demás gates (analyze, build,
+            tests, golden) ya corrieron sin necesitar device.
+          </div>
+          <div className="mt-3 flex justify-end">
+            <Button variant="turtle" onClick={recheckAndRunBoot} disabled={recheckBusy}>
+              {recheckBusy ? '…' : '↻ Validar de nuevo'}
+            </Button>
+          </div>
+        </div>
       )}
 
       {failedGate && projectCode && failedGate.outputPath && (
@@ -1939,14 +2120,19 @@ function LaunchQaInline({
   taskId,
   editedFiles,
   onLaunched,
+  interruptedRun,
 }: {
   client: ApiClient
   taskId: string
   editedFiles: string[]
   onLaunched: () => void
+  /** When set, the previous QA run was cancelled/failed before producing a
+   *  verdict. We show what it managed to output and relabel the CTA. */
+  interruptedRun?: AgentRunDTO
 }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showPartial, setShowPartial] = useState(false)
 
   async function launch() {
     setBusy(true)
@@ -1971,16 +2157,44 @@ function LaunchQaInline({
     }
   }
 
+  const partialOutput = interruptedRun?.output?.trim()
+
   return (
-    <div className="rounded-md border border-border bg-bg-alt p-3">
-      <div className="text-[12px] text-text-soft">
-        Un agente revisor leerá el código + acceptance criteria y emitirá un veredicto
-        (APPROVED/REJECTED) con la lista de defectos. No modifica nada.
-      </div>
+    <div
+      className={`rounded-md border p-3 ${
+        interruptedRun ? 'border-warning/40 bg-warning/5' : 'border-border bg-bg-alt'
+      }`}
+    >
+      {interruptedRun ? (
+        <div className="text-[12px] text-text-soft">
+          La revisión QA anterior se cortó antes de emitir veredicto
+          {interruptedRun.status === 'cancelled' ? ' (cancelada)' : ' (falló)'}. No se aplicó ningún
+          cambio. Vuelve a lanzarla cuando quieras.
+          {partialOutput && (
+            <button
+              type="button"
+              onClick={() => setShowPartial((v) => !v)}
+              className="ml-1 text-brand hover:underline"
+            >
+              {showPartial ? 'ocultar' : 'ver'} lo que alcanzó a analizar
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="text-[12px] text-text-soft">
+          Un agente revisor leerá el código + acceptance criteria y emitirá un veredicto
+          (APPROVED/REJECTED) con la lista de defectos. No modifica nada.
+        </div>
+      )}
+      {interruptedRun && showPartial && partialOutput && (
+        <pre className="mt-2 text-[11px] font-mono whitespace-pre-wrap text-text-soft bg-bg-alt border border-border rounded-md px-2 py-1.5 max-h-48 overflow-y-auto">
+          {partialOutput.slice(-2000)}
+        </pre>
+      )}
       {error && <div className="mt-2 text-[12px] text-danger">{error}</div>}
       <div className="mt-3 flex justify-end">
         <Button variant="turtle" onClick={launch} disabled={busy}>
-          {busy ? 'Lanzando…' : '▶ Lanzar revisión QA'}
+          {busy ? 'Lanzando…' : interruptedRun ? '↻ Relanzar revisión QA' : '▶ Lanzar revisión QA'}
         </Button>
       </div>
     </div>
@@ -2177,159 +2391,6 @@ function QaVerdictCard({
   )
 }
 
-const GATE_LIVE_POLL_MS = 600
-
-const GATE_LABEL: Record<GateType, string> = {
-  G1_ANALYZE: 'Revisar errores de tipos',
-  G2_ARCH: 'Revisión de arquitectura',
-  G3_BUILD: 'Compilar la app',
-  G4_BOOT: 'Boot smoke (integration)',
-  G5_FIDELITY: 'Golden tests (UI)',
-  G6_REAL_WORK: 'Unit + widget tests',
-  G7_A11Y: 'Accesibilidad',
-}
-
-/**
- * Live tail of the gate logs while runForTask is in flight. We don't
- * know which gate is currently running, so we walk the list in order
- * and surface the first one that has output but isn't done yet (or the
- * last one with content if everything finished while we were polling).
- *
- * Auto-scrolls to the bottom on each delta unless the operator has
- * scrolled up themselves (sticky bottom).
- */
-function GateLiveLog({
-  client,
-  taskId,
-  gates,
-}: {
-  client: ApiClient
-  taskId: string
-  gates: GateType[]
-}) {
-  const [activeGate, setActiveGate] = useState<GateType | null>(gates[0] ?? null)
-  const [content, setContent] = useState('')
-  const [doneByGate, setDoneByGate] = useState<Record<string, boolean>>({})
-  const offsetRef = useRef<Record<string, number>>({})
-  const containerRef = useRef<HTMLPreElement | null>(null)
-  const stickToBottomRef = useRef(true)
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: poll loop owns its own state via refs; restart only on client/taskId change
-  useEffect(() => {
-    let cancelled = false
-    const tick = async () => {
-      if (cancelled) return
-      try {
-        // Walk gates in order. First "still running with output" wins as
-        // the active gate. If all are done, stop on the last with size>0.
-        let chosen: { gate: GateType; chunk: string; done: boolean } | null = null
-        let allDone = true
-        for (const g of gates) {
-          const off = offsetRef.current[g] ?? 0
-          const res = await client.gates.tailLog(taskId, g, off)
-          offsetRef.current[g] = res.size
-          if (!res.done) allDone = false
-          setDoneByGate((m) => (m[g] === res.done ? m : { ...m, [g]: res.done }))
-          if (!res.done && res.size > 0) {
-            chosen = { gate: g, chunk: res.chunk, done: res.done }
-            break
-          }
-          if (res.size > 0) {
-            chosen = { gate: g, chunk: res.chunk, done: res.done }
-          }
-        }
-        if (chosen) {
-          if (chosen.gate !== activeGate) {
-            setActiveGate(chosen.gate)
-            setContent(chosen.chunk)
-          } else if (chosen.chunk) {
-            setContent((prev) => prev + chosen.chunk)
-          }
-        }
-        if (!cancelled && !allDone) {
-          timer = setTimeout(tick, GATE_LIVE_POLL_MS)
-        }
-      } catch {
-        if (!cancelled) timer = setTimeout(tick, GATE_LIVE_POLL_MS * 2)
-      }
-    }
-    let timer: ReturnType<typeof setTimeout> | null = setTimeout(tick, 100)
-    return () => {
-      cancelled = true
-      if (timer) clearTimeout(timer)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, taskId])
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: auto-stick scroll only reacts to new content
-  useEffect(() => {
-    if (!stickToBottomRef.current) return
-    const el = containerRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [content])
-
-  function onScroll(e: React.UIEvent<HTMLPreElement>) {
-    const el = e.currentTarget
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 20
-    stickToBottomRef.current = atBottom
-  }
-
-  const label = activeGate ? GATE_LABEL[activeGate] : 'Iniciando…'
-  return (
-    <div className="rounded-md border border-border bg-bg-alt overflow-hidden">
-      <div className="px-3 py-2 border-b border-border flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="h-2 w-2 rounded-full bg-turtle animate-pulse shrink-0" />
-          <span className="text-[12px] font-mono text-text truncate">{label}</span>
-        </div>
-        <div className="flex items-center gap-1 text-[10px] text-text-dim">
-          {gates.map((g) => (
-            <span
-              key={g}
-              className={`px-1.5 py-0.5 rounded font-mono ${
-                g === activeGate
-                  ? 'bg-turtle/20 text-turtle'
-                  : doneByGate[g]
-                    ? 'text-text-muted'
-                    : 'text-text-dim'
-              }`}
-              title={GATE_LABEL[g]}
-            >
-              {g.replace(/^G(\d)_.*/, 'G$1')}
-              {doneByGate[g] ? ' ✓' : ''}
-            </span>
-          ))}
-        </div>
-      </div>
-      <pre
-        ref={containerRef}
-        onScroll={onScroll}
-        className="m-0 p-3 max-h-[280px] overflow-auto text-[11px] font-mono text-text whitespace-pre-wrap bg-bg"
-      >
-        {content || 'Esperando salida…'}
-      </pre>
-    </div>
-  )
-}
-
-function GateBadgeInline({ status }: { status: GateDTO['status'] }) {
-  const map: Record<
-    GateDTO['status'],
-    { tone: 'neutral' | 'turtle' | 'warning' | 'danger'; label: string }
-  > = {
-    pending: { tone: 'neutral', label: 'pendiente' },
-    passed: { tone: 'turtle', label: 'OK' },
-    failed: { tone: 'danger', label: 'falló' },
-    skipped: { tone: 'warning', label: 'omitido' },
-  }
-  const m = map[status]
-  return (
-    <Badge tone={m.tone} outline>
-      {m.label}
-    </Badge>
-  )
-}
-
 function ApproveRejectInline({
   client,
   taskId,
@@ -2513,6 +2574,7 @@ function humanizeOutcome(outcome: IterationDTO['outcome']): string {
     approved: 'aprobada',
     rejected: 'rechazada',
     rework_requested: 'retrabajo',
+    reopened: 'reabierta',
   }
   return map[outcome]
 }
@@ -2537,6 +2599,7 @@ function outcomeTone(
     approved: 'turtle',
     rejected: 'danger',
     rework_requested: 'warning',
+    reopened: 'warning',
   }
   return map[outcome]
 }
@@ -2547,4 +2610,436 @@ function countDetails(
   iterations: IterationDTO[] | null | undefined,
 ): number {
   return (runs?.length ?? 0) + (gates?.length ?? 0) + (iterations?.length ?? 0)
+}
+
+function StepAckPanel({
+  client,
+  taskId,
+  stepId,
+  label,
+  ack,
+  canAck,
+  onChanged,
+}: {
+  client: ApiClient
+  taskId: string
+  stepId: string
+  label: string
+  ack: StepAckDTO | null
+  canAck: boolean
+  onChanged: () => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function setAck(kind: 'ok' | 'fail') {
+    setBusy(true)
+    setError(null)
+    try {
+      await client.tasks.upsertStepAck(taskId, {
+        stepId,
+        ack: kind,
+        ackedByRole: 'tech_lead',
+      })
+      onChanged()
+    } catch (err) {
+      setError((err as Error).message)
+      setBusy(false)
+    }
+  }
+
+  async function undo() {
+    setBusy(true)
+    setError(null)
+    try {
+      await client.tasks.deleteStepAck(taskId, stepId)
+      onChanged()
+    } catch (err) {
+      setError((err as Error).message)
+      setBusy(false)
+    }
+  }
+
+  if (ack?.ack === 'ok') {
+    return (
+      <div className="mt-3 rounded-md border border-turtle/40 bg-turtle/5 p-3 flex items-center justify-between gap-2">
+        <span className="text-[12px] text-turtle">✓ {label} — confirmado por ti</span>
+        <Button size="sm" variant="ghost" onClick={undo} disabled={busy}>
+          {busy ? '…' : '↩ Deshacer'}
+        </Button>
+      </div>
+    )
+  }
+
+  if (ack?.ack === 'fail') {
+    return (
+      <div className="mt-3 rounded-md border border-danger/40 bg-danger/5 p-3 flex items-center justify-between gap-2">
+        <span className="text-[12px] text-danger">✗ {label} — marcado como falla por ti</span>
+        <Button size="sm" variant="ghost" onClick={undo} disabled={busy}>
+          {busy ? '…' : '↩ Deshacer'}
+        </Button>
+      </div>
+    )
+  }
+
+  if (!canAck) return null
+
+  return (
+    <div className="mt-3 rounded-md border border-warning/40 bg-warning/5 p-3 flex items-center justify-between gap-2 flex-wrap">
+      <span className="text-[12px] text-text">⚠ Pendiente tu confirmación.</span>
+      <div className="flex items-center gap-2">
+        {error && <span className="text-[11px] text-danger">{error}</span>}
+        <Button size="sm" variant="ghost" onClick={() => setAck('fail')} disabled={busy}>
+          ✗ Marcar falla
+        </Button>
+        <Button size="sm" variant="turtle" onClick={() => setAck('ok')} disabled={busy}>
+          {busy ? '…' : '✓ Marcar OK'}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function GatesSummary({
+  client,
+  taskId,
+  stack,
+  analyzeGate,
+  buildGate,
+  realWorkGate,
+  fidelityGate,
+  bootGate,
+  runningGates,
+}: {
+  client: ApiClient
+  taskId: string
+  stack: ProjectStack
+  analyzeGate: GateDTO | null
+  buildGate: GateDTO | null
+  realWorkGate: GateDTO | null
+  fidelityGate: GateDTO | null
+  bootGate: GateDTO | null
+  runningGates: GateType[]
+}) {
+  const [cmds, setCmds] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    let alive = true
+    void client.gates
+      .preview(stack)
+      .then((res) => {
+        if (!alive) return
+        const m: Record<string, string> = {}
+        for (const g of res.gates) {
+          if (g.supported) m[g.type] = `${g.cmd} ${g.args.join(' ')}`
+        }
+        setCmds(m)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, stack])
+
+  const rows: Array<{ type: GateType; label: string; gate: GateDTO | null }> = [
+    { type: 'G1_ANALYZE', label: 'Revisar errores de tipos', gate: analyzeGate },
+    { type: 'G3_BUILD', label: 'Compilar la app', gate: buildGate },
+    { type: 'G6_REAL_WORK', label: 'Correr unit + widget tests', gate: realWorkGate },
+    { type: 'G5_FIDELITY', label: 'Correr golden tests (UI snapshots)', gate: fidelityGate },
+    { type: 'G4_BOOT', label: 'Boot smoke en emulador (integration)', gate: bootGate },
+  ]
+
+  return (
+    <div className="space-y-2">
+      {rows.map((r) => (
+        <GateRow
+          key={r.type}
+          client={client}
+          taskId={taskId}
+          gateType={r.type}
+          label={r.label}
+          gate={r.gate}
+          cmd={cmds[r.type] ?? null}
+          isRunning={runningGates.includes(r.type)}
+        />
+      ))}
+    </div>
+  )
+}
+
+function GateRow({
+  client,
+  taskId,
+  gateType,
+  label,
+  gate,
+  cmd,
+  isRunning,
+}: {
+  client: ApiClient
+  taskId: string
+  gateType: GateType
+  label: string
+  gate: GateDTO | null
+  cmd: string | null
+  isRunning: boolean
+}) {
+  const dbStatus = gate?.status ?? 'pending'
+  const effectiveStatus: 'running' | 'passed' | 'failed' | 'skipped' | 'pending' =
+    dbStatus === 'pending' && isRunning ? 'running' : dbStatus
+  const tone =
+    effectiveStatus === 'passed'
+      ? 'turtle'
+      : effectiveStatus === 'failed'
+        ? 'danger'
+        : effectiveStatus === 'skipped'
+          ? 'neutral'
+          : effectiveStatus === 'running'
+            ? 'brand'
+            : 'warning'
+  const icon =
+    effectiveStatus === 'passed'
+      ? '✓'
+      : effectiveStatus === 'failed'
+        ? '✗'
+        : effectiveStatus === 'skipped'
+          ? '—'
+          : effectiveStatus === 'running'
+            ? '…'
+            : '○'
+
+  const [open, setOpen] = useState(false)
+  const userToggledRef = useRef(false)
+  const [log, setLog] = useState<string>('')
+  const offsetRef = useRef(0)
+  const [repairBusy, setRepairBusy] = useState(false)
+  const [repairError, setRepairError] = useState<string | null>(null)
+  const [repairRunId, setRepairRunId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!userToggledRef.current) {
+      setOpen(effectiveStatus === 'running')
+    }
+  }, [effectiveStatus])
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tick owns its own offset via ref
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    const tick = async () => {
+      if (cancelled) return
+      try {
+        const res = await client.gates.tailLog(taskId, gateType, offsetRef.current)
+        if (cancelled) return
+        offsetRef.current = res.size
+        if (res.chunk) setLog((prev) => prev + res.chunk)
+        if (!res.done) {
+          timer = setTimeout(tick, 1200)
+        }
+      } catch {
+        if (!cancelled) timer = setTimeout(tick, 2000)
+      }
+    }
+    let timer: ReturnType<typeof setTimeout> | null = setTimeout(tick, 50)
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, gateType, taskId, effectiveStatus])
+
+  return (
+    <div className="rounded-md border border-border bg-bg-alt p-2">
+      <button
+        type="button"
+        onClick={() => {
+          userToggledRef.current = true
+          setOpen((v) => !v)
+        }}
+        className="w-full flex items-center gap-2 text-left"
+      >
+        <Badge tone={tone} outline>
+          {icon}
+        </Badge>
+        <span className="text-[13px] text-text flex-1 truncate">{label}</span>
+        {cmd && (
+          <span className="text-[11px] font-mono text-text-muted truncate max-w-[260px]">
+            $ {cmd}
+          </span>
+        )}
+        <span className="text-text-muted text-[11px]">{open ? '▾' : '▸'}</span>
+      </button>
+      {open && (
+        <>
+          <pre className="mt-2 text-[11px] font-mono whitespace-pre-wrap text-text-soft max-h-[260px] overflow-y-auto m-0">
+            {log ||
+              (effectiveStatus === 'pending'
+                ? '(no se ha ejecutado todavía)'
+                : 'Esperando salida…')}
+          </pre>
+          {effectiveStatus === 'failed' && !repairRunId && (
+            <div className="mt-2 flex items-center justify-end gap-2">
+              {repairError && <span className="text-[11px] text-danger">{repairError}</span>}
+              <Button
+                size="sm"
+                variant="turtle"
+                disabled={repairBusy}
+                onClick={async () => {
+                  setRepairBusy(true)
+                  setRepairError(null)
+                  try {
+                    const run = await client.gates.repair(taskId, {
+                      gateType,
+                      gateLabel: label,
+                      log,
+                    })
+                    setRepairRunId(run.id)
+                  } catch (err) {
+                    setRepairError((err as Error).message)
+                  } finally {
+                    setRepairBusy(false)
+                  }
+                }}
+              >
+                {repairBusy ? '…' : '🤖 Reparar con agente'}
+              </Button>
+            </div>
+          )}
+          {repairRunId && (
+            <div className="mt-2">
+              <CoworkerLiveView
+                client={client}
+                runId={repairRunId}
+                onFinished={(succeeded) => {
+                  setRepairRunId(null)
+                  if (succeeded) {
+                    setLog('')
+                    offsetRef.current = 0
+                  }
+                }}
+              />
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+function RereverifyInline({
+  client,
+  taskId,
+  stack,
+  onChanged,
+}: {
+  client: ApiClient
+  taskId: string
+  stack: ProjectStack
+  onChanged: () => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function rerun() {
+    setBusy(true)
+    setError(null)
+    try {
+      const gatesToRun: GateType[] = ['G1_ANALYZE', 'G3_BUILD', 'G6_REAL_WORK', 'G5_FIDELITY']
+      if (stack === 'flutter') {
+        try {
+          const { devices } = await client.preview.listDevices()
+          if (devices.some((d) => d.state === 'device')) gatesToRun.push('G4_BOOT')
+        } catch {
+          /* no device → skip G4 */
+        }
+      }
+      await client.gates.reset(taskId, gatesToRun)
+      onChanged()
+      await client.gates.runForTask(taskId, { stack, gates: gatesToRun })
+      onChanged()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mt-2 flex items-center justify-end gap-3">
+      {error && <span className="text-[11px] text-danger">{error}</span>}
+      <Button size="sm" variant="ghost" onClick={rerun} disabled={busy}>
+        {busy ? '… Re-verificando' : '↩ Re-verificar'}
+      </Button>
+    </div>
+  )
+}
+
+function ReopenInline({
+  client,
+  taskId,
+  wasApproved,
+  onChanged,
+}: {
+  client: ApiClient
+  taskId: string
+  wasApproved: boolean
+  onChanged: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [notes, setNotes] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function reopen() {
+    setBusy(true)
+    setError(null)
+    try {
+      await client.tasks.reopen(taskId, {
+        closedByRole: 'tech_lead',
+        notes: notes.trim() || undefined,
+      })
+      onChanged()
+    } catch (err) {
+      setError((err as Error).message)
+      setBusy(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <div className="mt-2 flex justify-end">
+        <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>
+          ↩ Revertir {wasApproved ? 'aprobación' : 'rechazo'}
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-md border border-warning/40 bg-warning/5 p-3">
+      <div className="text-[12px] text-text">
+        Revertir abre una nueva iteración y devuelve la tarea a <code>in_progress</code>. Si esta
+        era la última tarea aprobada de su story / phase, esos también vuelven a estar en curso.
+      </div>
+      <div className="mt-3">
+        <TextField
+          label="Razón (opcional)"
+          placeholder="Por qué reabres la tarea"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          disabled={busy}
+        />
+      </div>
+      {error && <div className="mt-2 text-[12px] text-danger">{error}</div>}
+      <div className="mt-3 flex justify-end gap-2">
+        <Button size="sm" variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
+          Cancelar
+        </Button>
+        <Button size="sm" variant="turtle" onClick={reopen} disabled={busy}>
+          {busy ? '…' : '↩ Revertir'}
+        </Button>
+      </div>
+    </div>
+  )
 }

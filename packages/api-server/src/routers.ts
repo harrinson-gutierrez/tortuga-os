@@ -33,7 +33,10 @@ import {
   ProjectEnvironment,
   RecordGateOutcomeInput,
   RejectTaskInput,
+  ReopenTaskInput,
   RequestQuoteChangesInput,
+  ResetGatesInput,
+  UpsertStepAckInput,
 } from '@tortuga-os/contracts'
 import type { CoreDeps } from '@tortuga-os/core'
 import { useCases } from '@tortuga-os/core'
@@ -230,8 +233,32 @@ export function buildDomainRouter(deps: CoreDeps): Hono {
       ),
     ),
   )
+  r.post('/tasks/:id/reopen', async (c) =>
+    respond(
+      c,
+      await useCases.tasks.reopenTask(
+        deps,
+        c.req.param('id'),
+        ReopenTaskInput.parse(await c.req.json()),
+      ),
+    ),
+  )
   r.get('/tasks/:id/iterations', async (c) =>
     respond(c, await useCases.tasks.listIterationsForTask(deps, c.req.param('id'))),
+  )
+  r.get('/tasks/:id/step-acks', async (c) =>
+    respond(c, await useCases.stepAcks.listStepAcks(deps, c.req.param('id'))),
+  )
+  r.post('/tasks/:id/step-acks', async (c) => {
+    const raw = await c.req.json().catch(() => ({}))
+    const body = UpsertStepAckInput.parse(raw)
+    return respond(c, await useCases.stepAcks.upsertStepAck(deps, c.req.param('id'), body))
+  })
+  r.delete('/tasks/:id/step-acks/:stepId', async (c) =>
+    respond(
+      c,
+      await useCases.stepAcks.deleteStepAck(deps, c.req.param('id'), c.req.param('stepId')),
+    ),
   )
   r.get('/iterations/:id', async (c) =>
     respond(c, await useCases.tasks.getIteration(deps, c.req.param('id'))),
@@ -260,6 +287,14 @@ export function buildDomainRouter(deps: CoreDeps): Hono {
       ),
     ),
   )
+  r.post('/gates/reset/:taskId', async (c) => {
+    const raw = await c.req.json().catch(() => ({}))
+    const body = ResetGatesInput.parse(raw)
+    return respond(
+      c,
+      await useCases.gates.resetGatesForTask(deps, c.req.param('taskId'), body.types),
+    )
+  })
 
   r.get('/evidence/iteration/:iterationId', async (c) =>
     respond(c, await useCases.evidence.listEvidenceForIteration(deps, c.req.param('iterationId'))),

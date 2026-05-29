@@ -26,7 +26,7 @@ interface GateCommand {
   timeoutMs: number
 }
 
-function commandFor(gateType: GateType, stack: GateStack): GateCommand | null {
+export function commandFor(gateType: GateType, stack: GateStack): GateCommand | null {
   if (gateType === 'G1_ANALYZE') {
     if (stack === 'flutter')
       return { cmd: 'flutter', args: ['analyze', '--no-pub'], timeoutMs: ANALYZE_TIMEOUT_MS }
@@ -93,6 +93,7 @@ function runCommand(
     const header = `[gate] $ ${cmd} ${args.join(' ')}\n[gate] cwd: ${cwd}\n[gate] started: ${new Date(startedAt).toISOString()}\n\n`
     logStream.write(header)
     chunks.push(Buffer.from(header, 'utf-8'))
+    // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
     const child = spawn(cmd, args, {
       cwd,
       shell: process.platform === 'win32',

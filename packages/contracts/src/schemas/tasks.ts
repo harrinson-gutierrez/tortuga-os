@@ -28,3 +28,9 @@ export const RejectTaskInput = z.object({
   notes: z.string().min(1),
 })
 export type RejectTaskInput = z.infer<typeof RejectTaskInput>
+
+export const ReopenTaskInput = z.object({
+  closedByRole: z.enum(ROLES),
+  notes: z.string().optional(),
+})
+export type ReopenTaskInput = z.infer<typeof ReopenTaskInput>

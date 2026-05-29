@@ -6,6 +6,7 @@ import { CostReport } from './CostReport'
 import { DiscoveryChat } from './DiscoveryChat'
 import { ExpensesPanel } from './ExpensesPanel'
 import { ProjectEnvsPanel } from './ProjectEnvsPanel'
+import { ProjectMcpsPanel } from './ProjectMcpsPanel'
 import { ProjectSkillsPanel } from './ProjectSkillsPanel'
 import { SecretsPanel } from './SecretsPanel'
 import { useAsyncData } from './useAsyncData'
@@ -211,6 +212,10 @@ export function ProjectDetail({
 
       <CollapsibleSection title="Credenciales (secrets)">
         <SecretsPanel client={client} projectCode={projectCode} />
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Conexiones MCP">
+        <ProjectMcpsPanel client={client} projectCode={projectCode} />
       </CollapsibleSection>
 
       <CollapsibleSection title="Variables de entorno">

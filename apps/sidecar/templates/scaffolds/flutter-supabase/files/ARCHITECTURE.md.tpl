@@ -50,7 +50,7 @@
 - **Tests**: cuatro niveles, todos obligatorios por feature:
   - **Unit** con `flutter_test` (sin binding Flutter) → model + repository (mock SupabaseClient con `mocktail`)
   - **Widget** con `flutter_test` + `ProviderScope` overrides → screens en estados loading/data/error
-  - **Golden** con `golden_toolkit` → captura cada screen en light + dark, phone + tablet; baselines en `test/features/<feature>/goldens/`
+  - **Golden** con `alchemist` (host, platform-independent) → cada screen en light + dark; baselines en `test/goldens/`. Para validar pixel-perfect en device también hay seed en `integration_test/`.
   - **Integration** con `integration_test` → smoke por feature: boot + navegación + 1 interacción
 
 ## Para añadir una feature nueva

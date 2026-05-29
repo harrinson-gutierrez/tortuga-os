@@ -33,7 +33,7 @@ jobs:
 
       - name: Run Semgrep
         run: |
-          semgrep ci \
+          semgrep scan \
             --config=p/owasp-top-ten \
             --config=p/typescript \
             --config=p/javascript \
@@ -41,8 +41,6 @@ jobs:
             --config=p/secrets \
             --error \
             --sarif --output=semgrep.sarif
-        env:
-          SEMGREP_RULES: p/owasp-top-ten p/typescript p/javascript p/security-audit p/secrets
 
       - name: Upload Semgrep SARIF
         if: always()

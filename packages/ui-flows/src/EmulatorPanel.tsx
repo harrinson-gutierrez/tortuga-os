@@ -621,13 +621,17 @@ function EmulatorBootLog({ client, avd }: { client: ApiClient; avd: string }) {
 
 /**
  * Live tail of `flutter run` output for the selected device. Polls the
- * sidecar every 1.5s while the launch is running. Auto-scrolls to the
- * bottom so the operator sees the freshest line (typical content: Gradle
- * progress, deprecation warnings, dart compile errors, install steps).
+ * sidecar continuously: every 1.5s while the launch is running, every 3s
+ * once it has exited. We keep polling after exit (instead of stopping) so
+ * that (a) the final crash lines + `exited` marker are never missed, and
+ * (b) a RElaunch on the same serial — which does NOT remount this
+ * component because `serial` is unchanged — is picked up automatically and
+ * the log refreshes to the new run instead of freezing on the old one.
  */
 function LaunchLog({ client, serial }: { client: ApiClient; serial: string }) {
   const [lines, setLines] = useState<string[]>([])
   const [running, setRunning] = useState(true)
+  const [startedAt, setStartedAt] = useState<number | null>(null)
   const [collapsed, setCollapsed] = useState(false)
   const preRef = useRef<HTMLPreElement>(null)
 
@@ -640,9 +644,12 @@ function LaunchLog({ client, serial }: { client: ApiClient; serial: string }) {
         if (disposed) return
         setLines(log.lines)
         setRunning(log.running)
-        if (log.running) timer = setTimeout(tick, 1500)
+        setStartedAt(log.startedAt)
+        timer = setTimeout(tick, log.running ? 1500 : 3000)
       } catch {
-        // 404 = no launch for serial yet. Stop polling silently.
+        // 404 = no launch for serial yet — keep polling slowly so a fresh
+        // launch on this serial is picked up without a remount.
+        if (!disposed) timer = setTimeout(tick, 3000)
       }
     }
     void tick()
@@ -652,14 +659,20 @@ function LaunchLog({ client, serial }: { client: ApiClient; serial: string }) {
     }
   }, [client, serial])
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll-to-bottom only on new log lines
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll-to-bottom on new log lines or when a fresh run starts
   useEffect(() => {
     if (!collapsed && preRef.current) {
       preRef.current.scrollTop = preRef.current.scrollHeight
     }
-  }, [lines, collapsed])
+  }, [lines, collapsed, startedAt])
 
   if (lines.length === 0) return null
+
+  // A run that exited with a Flutter crash line in its tail is a failure the
+  // operator should not miss — surface it in the header so a frozen-looking
+  // panel reads as "it crashed", not "nothing happened".
+  const crashed =
+    !running && lines.some((l) => l.includes('E/flutter') || l.includes('Unhandled Exception'))
 
   return (
     <div className="mt-3">
@@ -670,6 +683,8 @@ function LaunchLog({ client, serial }: { client: ApiClient; serial: string }) {
       >
         {collapsed ? '▸' : '▾'} Log de la app ({lines.length} líneas)
         {running && <span className="text-brand ml-2 animate-pulse">● en vivo</span>}
+        {crashed && <span className="text-danger ml-2">✕ la app falló al iniciar</span>}
+        {!running && !crashed && <span className="text-text-dim ml-2">— corrida terminada</span>}
       </button>
       {!collapsed && (
         <pre

@@ -63,12 +63,15 @@ import type {
   QuoteModuleDTO,
   RecordGateOutcomeInput,
   RejectTaskInput,
+  ReopenTaskInput,
   RequestQuoteChangesInput,
   RunGatesResultDTO,
   SecretDTO,
+  StepAckDTO,
   StoryDTO,
   TaskDTO,
   TroubleshootReportDTO,
+  UpsertStepAckInput,
   WorkEntryDTO,
   WorkspaceFileDTO,
   WorkspaceTreeDTO,
@@ -148,6 +151,18 @@ export function createApiClient(config: ApiClientConfig) {
         request<TaskDTO>(config, 'POST', `/api/tasks/${id}/approve`, input),
       reject: (id: string, input: RejectTaskInput) =>
         request<TaskDTO>(config, 'POST', `/api/tasks/${id}/reject`, input),
+      reopen: (id: string, input: ReopenTaskInput) =>
+        request<TaskDTO>(config, 'POST', `/api/tasks/${id}/reopen`, input),
+      listStepAcks: (id: string) =>
+        request<StepAckDTO[]>(config, 'GET', `/api/tasks/${id}/step-acks`),
+      upsertStepAck: (id: string, input: UpsertStepAckInput) =>
+        request<StepAckDTO>(config, 'POST', `/api/tasks/${id}/step-acks`, input),
+      deleteStepAck: (id: string, stepId: string) =>
+        request<{ ok: true }>(
+          config,
+          'DELETE',
+          `/api/tasks/${id}/step-acks/${encodeURIComponent(stepId)}`,
+        ),
       listIterations: (id: string) =>
         request<IterationDTO[]>(config, 'GET', `/api/tasks/${id}/iterations`),
       getIteration: (id: string) => request<IterationDTO>(config, 'GET', `/api/iterations/${id}`),
@@ -186,6 +201,24 @@ export function createApiClient(config: ApiClientConfig) {
           config,
           'GET',
           `/api/gates/log/${taskId}?gate=${encodeURIComponent(gate)}&offset=${offset}`,
+        ),
+      reset: (taskId: string, types: GateType[]) =>
+        request<{ deleted: number }>(config, 'POST', `/api/gates/reset/${taskId}`, { types }),
+      repair: (taskId: string, input: { gateType: GateType; gateLabel: string; log: string }) =>
+        request<AgentRunDTO>(config, 'POST', `/api/gates/repair/${taskId}`, input),
+      preview: (stack: string, gates?: GateType[]) =>
+        request<{
+          stack: string
+          gates: Array<
+            | { type: GateType; cmd: string; args: string[]; supported: true }
+            | { type: GateType; cmd: null; args: []; supported: false }
+          >
+        }>(
+          config,
+          'GET',
+          `/api/gates/preview?stack=${encodeURIComponent(stack)}${
+            gates && gates.length > 0 ? `&gates=${gates.join(',')}` : ''
+          }`,
         ),
     },
 
@@ -300,6 +333,26 @@ export function createApiClient(config: ApiClientConfig) {
           files: Array<{ to: string }>
           verify: Array<{ id: string; label: string; cmd: string }>
         }>(config, 'POST', '/api/scaffold/preview', { projectCode, stack }),
+      history: (projectCode: string) =>
+        request<{
+          version: 1
+          runs: Array<{
+            id: string
+            stack: string
+            startedAt: number
+            finishedAt: number | null
+            steps: Array<{
+              id: string
+              label: string
+              status: 'pending' | 'running' | 'done' | 'failed'
+              log: string
+              exitCode: number | null
+            }>
+            createdFiles: string[]
+            outcome: 'succeeded' | 'failed'
+            error: string | null
+          }>
+        }>(config, 'GET', `/api/scaffold/history/${encodeURIComponent(projectCode)}`),
       run: (
         projectCode: string,
         stack: string,
@@ -325,6 +378,8 @@ export function createApiClient(config: ApiClientConfig) {
           '/api/scaffold/run',
           { projectCode, stack },
           (ev) => {
+            // eslint-disable-next-line no-console
+            console.log('[scaffold-sse]', ev.type, ev)
             switch (ev.type) {
               case 'step-start':
                 callbacks.onStepStart?.(ev.stepId, ev.label)
@@ -351,6 +406,12 @@ export function createApiClient(config: ApiClientConfig) {
           },
           signal,
         ),
+      repair: (input: {
+        projectCode: string
+        taskId: string
+        stack: string
+        failedSteps: Array<{ id: string; label: string; log: string }>
+      }) => request<AgentRunDTO>(config, 'POST', '/api/scaffold/repair', input),
     },
 
     preview: {

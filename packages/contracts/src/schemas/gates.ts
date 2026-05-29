@@ -15,3 +15,8 @@ export const RecordGateOutcomeInput = z.object({
   force: z.boolean().optional(),
 })
 export type RecordGateOutcomeInput = z.infer<typeof RecordGateOutcomeInput>
+
+export const ResetGatesInput = z.object({
+  types: z.array(z.enum(GATE_TYPES)).min(1),
+})
+export type ResetGatesInput = z.infer<typeof ResetGatesInput>

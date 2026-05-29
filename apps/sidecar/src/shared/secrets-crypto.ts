@@ -25,6 +25,7 @@ import { env } from './env'
 const ALGO = 'aes-256-gcm'
 const IV_BYTES = 12
 const KEY_BYTES = 32
+const TAG_BYTES = 16
 
 let cachedKey: Buffer | null = null
 
@@ -68,7 +69,7 @@ export interface EncryptedSecret {
 export function encryptSecret(plaintext: string): EncryptedSecret {
   const key = loadOrCreateKey()
   const iv = randomBytes(IV_BYTES)
-  const cipher = createCipheriv(ALGO, key, iv)
+  const cipher = createCipheriv(ALGO, key, iv, { authTagLength: TAG_BYTES })
   const ct = Buffer.concat([cipher.update(plaintext, 'utf-8'), cipher.final()])
   const tag = cipher.getAuthTag()
   return {
@@ -83,7 +84,10 @@ export function decryptSecret(enc: EncryptedSecret): string {
   const iv = Buffer.from(enc.iv, 'base64')
   const ciphertext = Buffer.from(enc.ciphertext, 'base64')
   const authTag = Buffer.from(enc.authTag, 'base64')
-  const decipher = createDecipheriv(ALGO, key, iv)
+  const decipher = createDecipheriv(ALGO, key, iv, { authTagLength: TAG_BYTES })
+  if (authTag.length !== TAG_BYTES) {
+    throw new Error('secrets-crypto: invalid auth tag length')
+  }
   decipher.setAuthTag(authTag)
   const pt = Buffer.concat([decipher.update(ciphertext), decipher.final()])
   return pt.toString('utf-8')

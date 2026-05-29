@@ -1,15 +1,14 @@
 import 'dart:async';
 
+import 'package:alchemist/alchemist.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:golden_toolkit/golden_toolkit.dart';
 
 Future<void> testExecutable(FutureOr<void> Function() testMain) async {
-  await loadAppFonts();
-  return GoldenToolkit.runWithConfiguration(
-    () async => testMain(),
-    config: GoldenToolkitConfiguration(
-      enableRealShadows: true,
-      defaultDevices: const [Device.phone, Device.tabletPortrait],
+  return AlchemistConfig.runWithConfig(
+    config: const AlchemistConfig(
+      platformGoldensConfig: PlatformGoldensConfig(enabled: false),
+      ciGoldensConfig: CiGoldensConfig(enabled: true),
     ),
+    run: testMain,
   );
 }

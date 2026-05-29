@@ -60,11 +60,13 @@ import type {
   RequestQuoteChangesArgs,
   RoleRateRow,
   SecretRow,
+  StepAckRow,
   Storage,
   StoryRow,
   TaskRow,
   TroubleshootReportRow,
   UpdateTaskStatusArgs,
+  UpsertStepAckArgs,
   WorkEntryRow,
 } from '@tortuga-os/core'
 import type {
@@ -74,7 +76,7 @@ import type {
   ProjectEnvironment,
   TroubleshootStatus,
 } from '@tortuga-os/domain'
-import { and, asc, desc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm'
 import type { Db } from './client'
 import {
   agentRuns,
@@ -99,6 +101,7 @@ import {
   quotes,
   roles as rolesTable,
   secrets,
+  stepAcks,
   stories,
   tasks,
   troubleshootReports,
@@ -797,6 +800,15 @@ export function createSqliteStorage(db: Db): Storage {
         .where(eq(gates.id, args.gateId))
       const row = await db.select().from(gates).where(eq(gates.id, args.gateId)).get()
       return row as GateRow
+    },
+
+    async deleteGatesForIteration(args: { iterationId: string; types: GateType[] }) {
+      if (args.types.length === 0) return 0
+      const result = await db
+        .delete(gates)
+        .where(and(eq(gates.iterationId, args.iterationId), inArray(gates.gateType, args.types)))
+        .run()
+      return result.changes ?? 0
     },
 
     async getEvidenceById(id) {
@@ -1895,6 +1907,77 @@ export function createSqliteStorage(db: Db): Storage {
         .where(eq(troubleshootReports.id, args.id))
         .get()
       return row as TroubleshootReportRow
+    },
+
+    async listStepAcksForTaskIteration(taskId: string, iterationN: number) {
+      return (await db
+        .select()
+        .from(stepAcks)
+        .where(and(eq(stepAcks.taskId, taskId), eq(stepAcks.iterationN, iterationN)))
+        .all()) as StepAckRow[]
+    },
+
+    async upsertStepAck(args: UpsertStepAckArgs) {
+      const existing = await db
+        .select()
+        .from(stepAcks)
+        .where(
+          and(
+            eq(stepAcks.taskId, args.taskId),
+            eq(stepAcks.iterationN, args.iterationN),
+            eq(stepAcks.stepId, args.stepId),
+          ),
+        )
+        .get()
+      if (existing) {
+        await db
+          .update(stepAcks)
+          .set({
+            ack: args.ack,
+            ackedByRole: args.ackedByRole,
+            notes: args.notes,
+            ackedAt: args.now,
+            updatedAt: args.now,
+          })
+          .where(eq(stepAcks.id, (existing as { id: string }).id))
+          .run()
+        const row = await db
+          .select()
+          .from(stepAcks)
+          .where(eq(stepAcks.id, (existing as { id: string }).id))
+          .get()
+        return row as StepAckRow
+      }
+      await db
+        .insert(stepAcks)
+        .values({
+          id: args.id,
+          taskId: args.taskId,
+          iterationN: args.iterationN,
+          stepId: args.stepId,
+          ack: args.ack,
+          ackedByRole: args.ackedByRole,
+          notes: args.notes,
+          ackedAt: args.now,
+          createdAt: args.now,
+          updatedAt: args.now,
+        })
+        .run()
+      const row = await db.select().from(stepAcks).where(eq(stepAcks.id, args.id)).get()
+      return row as StepAckRow
+    },
+
+    async deleteStepAck(args: { taskId: string; iterationN: number; stepId: string }) {
+      await db
+        .delete(stepAcks)
+        .where(
+          and(
+            eq(stepAcks.taskId, args.taskId),
+            eq(stepAcks.iterationN, args.iterationN),
+            eq(stepAcks.stepId, args.stepId),
+          ),
+        )
+        .run()
     },
   }
 }

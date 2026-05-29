@@ -50,13 +50,13 @@ export function TaskDetailPage({
     return null
   }, [client, stories.data, refreshKey])
 
-  if (projectQuery.error)
+  if (projectQuery.error && !projectQuery.data)
     return (
       <Card>
         <div className="text-[13px] text-danger">{projectQuery.error}</div>
       </Card>
     )
-  if (projectQuery.loading || !projectQuery.data)
+  if (!projectQuery.data)
     return (
       <Card>
         <div className="text-[13px] text-text-muted">Cargando proyecto…</div>
