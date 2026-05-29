@@ -332,17 +332,20 @@ async function runScaffoldBody(
     const rendered = applyVars(tplContent, vars)
     const absTo = join(workspace, f.to)
     mkdirSync(dirname(absTo), { recursive: true })
-    // Don't overwrite if the file already exists with non-trivial content,
-    // unless it's clearly a template marker (e.g. the auto-generated
-    // lib/main.dart that flutter create produces — those we override).
-    const shouldOverwrite =
-      !existsSync(absTo) ||
+    const forceOverwrite =
       f.to.endsWith('main.dart') ||
       f.to.endsWith('ARCHITECTURE.md') ||
       f.to.endsWith('widget_test.dart')
-    if (shouldOverwrite) {
+    if (forceOverwrite) {
       writeFileSync(absTo, rendered, 'utf-8')
       onEvent({ type: 'file', to: f.to })
+    } else {
+      try {
+        writeFileSync(absTo, rendered, { encoding: 'utf-8', flag: 'wx' })
+        onEvent({ type: 'file', to: f.to })
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e
+      }
     }
   }
 

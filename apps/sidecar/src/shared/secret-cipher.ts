@@ -38,7 +38,7 @@ export function createSecretCipher(): SecretCipher {
     encrypt(plaintext: string): EncryptedBlob {
       const key = deriveKey()
       const iv = randomBytes(12)
-      const cipher = createCipheriv('aes-256-gcm', key, iv)
+      const cipher = createCipheriv('aes-256-gcm', key, iv, { authTagLength: 16 })
       const enc = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()])
       const authTag = cipher.getAuthTag()
       return {
@@ -52,8 +52,10 @@ export function createSecretCipher(): SecretCipher {
       const iv = Buffer.from(blob.iv, 'hex')
       const authTag = Buffer.from(blob.authTag, 'hex')
       const ciphertext = Buffer.from(blob.ciphertext, 'hex')
-      // nosemgrep: javascript.node-crypto.security.gcm-no-tag-length.gcm-no-tag-length
-      const decipher = createDecipheriv('aes-256-gcm', key, iv)
+      const decipher = createDecipheriv('aes-256-gcm', key, iv, { authTagLength: 16 })
+      if (authTag.length !== 16) {
+        throw new Error('secret-cipher: invalid auth tag length')
+      }
       decipher.setAuthTag(authTag)
       const dec = Buffer.concat([decipher.update(ciphertext), decipher.final()])
       return dec.toString('utf8')
