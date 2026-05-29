@@ -73,6 +73,7 @@ const AGENT_LABEL: Record<(typeof AGENT_KINDS)[number], string> = {
   'dev-vite-react': 'Programador React',
   'dev-node': 'Programador Node',
   designer: 'Diseñador',
+  'frame-assigner': 'Repartidor de frames',
   qa: 'Revisor de calidad',
   sales: 'Comercial',
   pm: 'Project manager',

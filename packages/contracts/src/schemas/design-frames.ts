@@ -18,7 +18,8 @@ export const DesignTokens = z.object({
 export type DesignTokens = z.infer<typeof DesignTokens>
 
 export const CreateDesignFrameInput = z.object({
-  storyId: z.string().min(1),
+  projectId: z.string().min(1),
+  storyId: z.string().min(1).nullable().optional(),
   figmaFileKey: z.string().min(1),
   figmaNodeId: z.string().min(1),
   name: z.string().min(1).max(200),
@@ -29,6 +30,7 @@ export const CreateDesignFrameInput = z.object({
 export type CreateDesignFrameInput = z.infer<typeof CreateDesignFrameInput>
 
 export const PatchDesignFrameInput = z.object({
+  storyId: z.string().min(1).nullable().optional(),
   name: z.string().min(1).max(200).optional(),
   tokens: DesignTokens.optional(),
   baselineScreenshotPath: z.string().nullable().optional(),
@@ -37,16 +39,16 @@ export const PatchDesignFrameInput = z.object({
 })
 export type PatchDesignFrameInput = z.infer<typeof PatchDesignFrameInput>
 
-/** Operator pastes a Figma link; the sidecar imports its frames. */
+/** Operator pastes a Figma link; the sidecar imports the whole project design. */
 export const ImportDesignInput = z.object({
-  storyId: z.string().min(1),
+  projectCode: z.string().min(1),
   figmaUrl: z.string().url(),
 })
 export type ImportDesignInput = z.infer<typeof ImportDesignInput>
 
-/** Operator describes intent; the designer agent generates a Figma design. */
+/** Operator describes intent; the designer agent generates the project design. */
 export const GenerateDesignInput = z.object({
-  storyId: z.string().min(1),
+  projectCode: z.string().min(1),
   intent: z.string().min(1).max(4000),
 })
 export type GenerateDesignInput = z.infer<typeof GenerateDesignInput>
@@ -72,3 +74,15 @@ export const DesignerOutput = z.object({
   frames: z.array(DesignerFrameOutput).min(1),
 })
 export type DesignerOutput = z.infer<typeof DesignerOutput>
+
+/** Output of the frame-assigner agent: frame → build story assignments. */
+export const FrameAssignerOutput = z.object({
+  assignments: z.array(
+    z.object({
+      frameId: z.string().min(1),
+      storyId: z.string().min(1),
+      reason: z.string().optional(),
+    }),
+  ),
+})
+export type FrameAssignerOutput = z.infer<typeof FrameAssignerOutput>

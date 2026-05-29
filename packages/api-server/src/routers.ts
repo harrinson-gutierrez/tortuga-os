@@ -498,6 +498,12 @@ export function buildDomainRouter(deps: CoreDeps): Hono {
     ),
   )
 
+  r.get('/design-frames/project/:projectCode', async (c) =>
+    respond(
+      c,
+      await useCases.designFrames.listDesignFramesForProject(deps, c.req.param('projectCode')),
+    ),
+  )
   r.get('/design-frames/story/:storyId', async (c) =>
     respond(c, await useCases.designFrames.listDesignFramesForStory(deps, c.req.param('storyId'))),
   )

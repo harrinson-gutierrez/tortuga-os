@@ -7,6 +7,16 @@ import type { CoreDeps } from '../deps'
 import { type UseCaseResult, notFound, ucOk } from '../errors'
 import { designFrameDTO } from '../mappers'
 
+export async function listDesignFramesForProject(
+  { storage }: CoreDeps,
+  projectCode: string,
+): Promise<UseCaseResult<DesignFrameDTO[]>> {
+  const proj = await storage.getProjectByCode(projectCode)
+  if (!proj) return notFound('project', projectCode)
+  const rows = await storage.listDesignFramesForProject(proj.project.id)
+  return ucOk(rows.map(designFrameDTO))
+}
+
 export async function listDesignFramesForStory(
   { storage }: CoreDeps,
   storyId: string,
@@ -30,11 +40,16 @@ export async function createDesignFrame(
   { storage, newId, now }: CoreDeps,
   input: CreateDesignFrameInput,
 ): Promise<UseCaseResult<DesignFrameDTO>> {
-  const story = await storage.getStoryById(input.storyId)
-  if (!story) return notFound('story', input.storyId)
+  const proj = await storage.getProjectById(input.projectId)
+  if (!proj) return notFound('project', input.projectId)
+  if (input.storyId) {
+    const story = await storage.getStoryById(input.storyId)
+    if (!story) return notFound('story', input.storyId)
+  }
   const row = await storage.createDesignFrame({
     id: newId(),
-    storyId: input.storyId,
+    projectId: input.projectId,
+    storyId: input.storyId ?? null,
     figmaFileKey: input.figmaFileKey,
     figmaNodeId: input.figmaNodeId,
     name: input.name,
@@ -57,6 +72,7 @@ export async function patchDesignFrame(
   const row = await storage.patchDesignFrame({
     id,
     patch: {
+      ...(input.storyId !== undefined ? { storyId: input.storyId } : {}),
       ...(input.name !== undefined ? { name: input.name } : {}),
       ...(input.tokens !== undefined ? { tokensJson: JSON.stringify(input.tokens) } : {}),
       ...(input.baselineScreenshotPath !== undefined

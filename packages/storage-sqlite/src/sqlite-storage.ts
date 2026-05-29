@@ -1452,6 +1452,15 @@ export function createSqliteStorage(db: Db): Storage {
         .run()
     },
 
+    async listDesignFramesForProject(projectId) {
+      return db
+        .select()
+        .from(designFrames)
+        .where(and(eq(designFrames.projectId, projectId), isNull(designFrames.deletedAt)))
+        .orderBy(asc(designFrames.createdAt))
+        .all() as DesignFrameRow[]
+    },
+
     async listDesignFramesForStory(storyId) {
       return db
         .select()
@@ -1475,6 +1484,7 @@ export function createSqliteStorage(db: Db): Storage {
         .insert(designFrames)
         .values({
           id: args.id,
+          projectId: args.projectId,
           storyId: args.storyId,
           figmaFileKey: args.figmaFileKey,
           figmaNodeId: args.figmaNodeId,
@@ -1494,6 +1504,7 @@ export function createSqliteStorage(db: Db): Storage {
 
     async patchDesignFrame(args: PatchDesignFrameArgs) {
       const updates: Record<string, unknown> = { updatedAt: args.now }
+      if (args.patch.storyId !== undefined) updates.storyId = args.patch.storyId
       if (args.patch.name !== undefined) updates.name = args.patch.name
       if (args.patch.tokensJson !== undefined) updates.tokensJson = args.patch.tokensJson
       if (args.patch.baselineScreenshotPath !== undefined) {
@@ -1583,6 +1594,27 @@ export function createSqliteStorage(db: Db): Storage {
         .where(and(eq(expenses.projectId, projectId), isNull(expenses.deletedAt)))
         .all()) as Array<{ amount: number }>
       return rows.reduce((acc, r) => acc + r.amount, 0)
+    },
+
+    async sumAgentRunCostForProject(projectId: string) {
+      // agent_runs → tasks → stories → quotes → phases (project_id).
+      const row = (await db
+        .select({
+          costCents: sql<number>`COALESCE(SUM(${agentRuns.costCents}), 0)`,
+          tokensIn: sql<number>`COALESCE(SUM(${agentRuns.tokensIn}), 0)`,
+          tokensOut: sql<number>`COALESCE(SUM(${agentRuns.tokensOut}), 0)`,
+          runCount: sql<number>`COUNT(${agentRuns.id})`,
+        })
+        .from(agentRuns)
+        .innerJoin(tasks, eq(agentRuns.taskId, tasks.id))
+        .innerJoin(stories, eq(tasks.storyId, stories.id))
+        .innerJoin(quotes, eq(stories.quoteId, quotes.id))
+        .innerJoin(phases, eq(quotes.phaseId, phases.id))
+        .where(eq(phases.projectId, projectId))
+        .get()) as
+        | { costCents: number; tokensIn: number; tokensOut: number; runCount: number }
+        | undefined
+      return row ?? { costCents: 0, tokensIn: 0, tokensOut: 0, runCount: 0 }
     },
 
     async listSecretsForProject(projectId: string) {

@@ -4,78 +4,116 @@ import { useCases } from '@tortuga-os/core'
 import { logger } from '../../shared/logger'
 
 export interface DesignerRunRequest {
-  storyId: string
+  projectCode: string
   mode: 'import' | 'generate'
   /** Import: the Figma file key + node id to pull. */
   figmaFileKey?: string
   figmaNodeId?: string | null
-  /** Generate: the operator's intent describing the screen to design. */
+  /** Generate: the operator's intent describing the product to design. */
   intent?: string
 }
 
 /**
- * Resolve the `design` task for a story, creating one on first use. A
- * story has exactly one design task; the designer agent runs against it
- * so its output (and the resulting frames) hang off a real task/iteration.
+ * Resolve the project-level design task, creating it on first use. Design
+ * is a single deliverable for the whole project (one Figma), done before
+ * architecture — so it hangs off a synthetic `<CODE>-000-DESIGN` story
+ * (mirroring the `<CODE>-000` arch story idiom), NOT off a build story.
+ * Idempotent: reuses the story/task if they already exist.
  */
-async function resolveDesignTask(deps: CoreDeps, storyId: string): Promise<string | null> {
-  const story = await deps.storage.getStoryById(storyId)
-  if (!story) return null
-  const tasks = await deps.storage.listTasksForStory(storyId)
+async function resolveProjectDesignTask(
+  deps: CoreDeps,
+  projectCode: string,
+): Promise<{ taskId: string; projectId: string } | null> {
+  const proj = await deps.storage.getProjectByCode(projectCode)
+  if (!proj) return null
+  const projectId = proj.project.id
+
+  const salesPhase = await deps.storage.getSalesPhase(projectId)
+  if (!salesPhase) return null
+  const quote = await deps.storage.getLatestQuoteForSalesPhase(salesPhase.id)
+  if (!quote) return null
+
+  const storyCode = `${proj.project.code}-000-DESIGN`
+  let story = await deps.storage.getStoryByCode(storyCode)
+  if (!story) {
+    const created = await useCases.stories.createStory(deps, {
+      quoteId: quote.id,
+      code: storyCode,
+      title: 'Diseño del proyecto',
+      goal: 'Definir el diseño visual completo del proyecto en Figma (todas las pantallas) antes de arquitectura. Cada frame se reparte a su story de build.',
+      ownerRole: 'designer',
+      estimatedHoursMin: 0,
+      priority: 1,
+      acceptanceCriteriaJson: '[]',
+      inputsJson: '{}',
+      outputsJson: '{}',
+      verificationJson: '{}',
+      outOfScopeJson: '[]',
+    })
+    if (!created.ok) {
+      logger.warn({ projectCode, error: created.error }, 'design: failed to create T0-DESIGN story')
+      return null
+    }
+    story = await deps.storage.getStoryById(created.value.id)
+    if (!story) return null
+  }
+
+  const tasks = await deps.storage.listTasksForStory(story.id)
   const existing = tasks.find((t) => t.type === 'design')
-  if (existing) return existing.id
-  const created = await useCases.tasks.createTask(deps, {
-    storyId,
-    code: `${story.code}-DESIGN`,
+  if (existing) return { taskId: existing.id, projectId }
+  const task = await useCases.tasks.createTask(deps, {
+    storyId: story.id,
+    code: `${storyCode}-T1`,
     type: 'design',
     ownerRole: 'designer',
     estimatedHoursMin: 0,
   })
-  return created.ok ? created.value.id : null
+  return task.ok ? { taskId: task.value.id, projectId } : null
 }
 
 function buildImportPrompt(args: { figmaFileKey: string; figmaNodeId: string | null }): string {
   const lines: string[] = [
-    '# Mode: IMPORT an existing Figma design',
+    '# Mode: IMPORT the project design from an existing Figma file',
     '',
     `Figma fileKey: ${args.figmaFileKey}`,
-    args.figmaNodeId ? `Figma nodeId: ${args.figmaNodeId}` : 'Figma nodeId: (whole file)',
+    args.figmaNodeId
+      ? `Figma nodeId: ${args.figmaNodeId}`
+      : 'Figma nodeId: (whole file — import ALL top-level frames)',
     '',
-    'Use the Figma MCP tools (get_design_context, get_variable_defs,',
-    'get_screenshot, get_metadata) on the node(s) above. Extract the design',
-    'tokens (colors, typography, spacing, radii) and a screenshot of each',
-    'frame, then emit the structured JSON described in your system prompt.',
+    'Use the Figma MCP tools (get_metadata to enumerate frames,',
+    'get_design_context, get_variable_defs, get_screenshot). Extract design',
+    'tokens + a screenshot for EVERY screen/frame in scope, then emit the',
+    'structured JSON described in your system prompt — one entry per frame.',
   ]
   return lines.join('\n')
 }
 
 function buildGeneratePrompt(args: { intent: string }): string {
   const lines: string[] = [
-    '# Mode: GENERATE a Figma design from intent',
+    '# Mode: GENERATE the project design from intent',
     '',
     '## Intent',
     args.intent.trim(),
     '',
-    'Use generate_figma_design / use_figma anchored to the Tuurt design',
-    'system (brand accent #f44e5c, tokens from the brandbook). Create the',
-    'frames in Figma, then emit the structured JSON described in your system',
-    'prompt with the generated fileKey + node ids.',
+    'Design the full set of screens in Figma with generate_figma_design /',
+    'use_figma anchored to the Tuurt design system (brand accent #f44e5c,',
+    'tokens from the brandbook). Then get_screenshot + get_variable_defs on',
+    'each generated frame and emit the structured JSON — one entry per frame.',
   ]
   return lines.join('\n')
 }
 
 /**
- * Queue a `designer` agent run for the story's design task and link the
- * runId so the worker post-run hook can attribute the produced frames.
- * Returns the runId, or null when the story/task can't be resolved.
+ * Queue a project-level `designer` run on the T0-DESIGN task. Returns the
+ * runId, or null when the project/quote can't be resolved.
  */
 export async function queueDesignerRun(
   deps: CoreDeps,
   req: DesignerRunRequest,
 ): Promise<string | null> {
-  const taskId = await resolveDesignTask(deps, req.storyId)
-  if (!taskId) {
-    logger.warn({ storyId: req.storyId }, 'design: could not resolve design task')
+  const resolved = await resolveProjectDesignTask(deps, req.projectCode)
+  if (!resolved) {
+    logger.warn({ projectCode: req.projectCode }, 'design: could not resolve project design task')
     return null
   }
   const userPrompt =
@@ -87,14 +125,17 @@ export async function queueDesignerRun(
       : buildGeneratePrompt({ intent: req.intent ?? '' })
 
   const queued = await useCases.agentRuns.queueAgentRun(deps, {
-    taskId,
+    taskId: resolved.taskId,
     agentKind: 'designer',
     provider: 'claude-cli',
     systemPrompt: systemPromptFor('designer'),
     userPrompt,
   })
   if (!queued.ok) {
-    logger.warn({ storyId: req.storyId, error: queued.error }, 'design: failed to queue run')
+    logger.warn(
+      { projectCode: req.projectCode, error: queued.error },
+      'design: failed to queue run',
+    )
     return null
   }
   return queued.value.id

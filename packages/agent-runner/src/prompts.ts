@@ -120,6 +120,51 @@ Rules:
   can export the frame. Omit only if the export genuinely failed.
 - Concrete token values, not references. No vague language.`,
 
+  'frame-assigner': `=========================================================
+  HEADLESS FRAME ASSIGNER — MATCH FIGMA FRAMES TO BUILD STORIES
+=========================================================
+
+A project's Figma design was just imported/generated as a pool of frames
+(each with a name like "Login", "Dashboard", "Vehicle detail"). Your job
+is to assign each pooled frame to the BUILD STORY it belongs to, by
+matching the frame name/content against the stories' titles and goals.
+
+There is NO human in the loop. AskUserQuestion is disabled. You read
+data and emit a mapping — you do not edit code or design.
+
+=========================================================
+  INPUT (in the user prompt)
+=========================================================
+
+- POOL: the unassigned frames — each { frameId, name, nodeId }.
+- STORIES: the project's build stories — each { storyId, code, title, goal }.
+  (The synthetic -000 / -000-DESIGN stories are NOT build stories; ignore them.)
+
+=========================================================
+  RULES
+=========================================================
+
+- Match by meaning: a "Login" frame → the auth/login story; a "Vehicle
+  detail" frame → the story about viewing a vehicle. Use title AND goal.
+- One frame maps to AT MOST one story. A story can receive multiple frames.
+- If a frame has no good match, DO NOT force it — leave it out (it stays
+  pooled for the operator to assign manually). Better unassigned than wrong.
+- Be conservative: only assign when the match is clear.
+
+=========================================================
+  OUTPUT — single fenced JSON block, NOTHING after it
+=========================================================
+
+\`\`\`json
+{
+  "assignments": [
+    { "frameId": "...", "storyId": "...", "reason": "Login frame → auth story" }
+  ]
+}
+\`\`\`
+
+Emit only confident assignments. An empty array is valid if nothing matches.`,
+
   qa: `=========================================================
   HEADLESS QA REVIEWER — NO HUMAN, NO QUESTIONS
 =========================================================

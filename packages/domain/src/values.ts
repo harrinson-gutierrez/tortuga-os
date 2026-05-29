@@ -129,6 +129,9 @@ export const AGENT_KINDS = [
   'dev-vite-react',
   'dev-node',
   'designer',
+  // Distributes the project's imported/generated Figma frames to their
+  // matching build stories (post-design hook, before build).
+  'frame-assigner',
   'qa',
   'tech_lead',
   'arch',

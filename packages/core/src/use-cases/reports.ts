@@ -53,6 +53,10 @@ export async function getProjectCostReport(
 
   const cost = imputeReworkCost(workEntries, ticketsById, rate)
 
+  const expensesCents = await storage.sumExpensesForProject(project.id)
+  const ai = await storage.sumAgentRunCostForProject(project.id)
+  const marginCents = budgetCents - cost.spentCents - expensesCents - ai.costCents
+
   return ucOk({
     projectId: project.id,
     projectCode: project.code,
@@ -60,6 +64,12 @@ export async function getProjectCostReport(
     spentCents: cost.spentCents,
     reworkCostCents: cost.reworkCostCents,
     clientReworkCostCents: cost.clientReworkCostCents,
+    expensesCents,
+    aiCostCents: ai.costCents,
+    aiTokensIn: ai.tokensIn,
+    aiTokensOut: ai.tokensOut,
+    aiRunCount: ai.runCount,
+    marginCents,
     byPhase: cost.byPhase.map((p) => ({
       phase: p.phase,
       cleanHoursMin: p.cleanMinutes,

@@ -13,6 +13,7 @@ import { useCases } from '@tortuga-os/core'
 import { coreDeps } from '../../shared/core-deps'
 import { logger } from '../../shared/logger'
 import { handleDesignerOutput } from '../design/designer-output'
+import { handleFrameAssignerOutput } from '../design/frame-assigner'
 import { renderSkillsBlock, resolveSkillsForRun, skillsRootPath } from '../skills/use-cases'
 import { parseDiagnosisFromOutput } from '../troubleshoot/diagnosis-parser'
 import { notifyTroubleshootOutcome, recordEvidenceForReport } from '../troubleshoot/evidence'
@@ -558,6 +559,12 @@ async function processOneRun(deps: CoreDeps, runId: string): Promise<void> {
     // the G5 fidelity gate.
     if (run.agentKind === 'designer') {
       await handleDesignerOutput(deps, run.id, outcome.output)
+    }
+
+    // Frame-assigner runs: apply the frame→story assignments the agent
+    // produced, distributing the pooled project frames to build stories.
+    if (run.agentKind === 'frame-assigner') {
+      await handleFrameAssignerOutput(deps, run.id, outcome.output)
     }
 
     await safeEnqueueRunInbox(deps, {

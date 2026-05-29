@@ -198,9 +198,17 @@ export interface PatchKitTemplateArgs {
   now: number
 }
 
+export interface AgentRunCostTotals {
+  costCents: number
+  tokensIn: number
+  tokensOut: number
+  runCount: number
+}
+
 export interface CreateDesignFrameArgs {
   id: string
-  storyId: string
+  projectId: string
+  storyId: string | null
   figmaFileKey: string
   figmaNodeId: string
   name: string
@@ -214,6 +222,7 @@ export interface CreateDesignFrameArgs {
 export interface PatchDesignFrameArgs {
   id: string
   patch: Partial<{
+    storyId: string | null
     name: string
     tokensJson: string
     baselineScreenshotPath: string | null
@@ -655,6 +664,7 @@ export interface Storage {
   patchKitTemplate(args: PatchKitTemplateArgs): Promise<KitTemplateRow>
   softDeleteKitTemplate(id: string, now: number): Promise<void>
 
+  listDesignFramesForProject(projectId: string): Promise<DesignFrameRow[]>
   listDesignFramesForStory(storyId: string): Promise<DesignFrameRow[]>
   getDesignFrameById(id: string): Promise<DesignFrameRow | null>
   createDesignFrame(args: CreateDesignFrameArgs): Promise<DesignFrameRow>
@@ -668,6 +678,8 @@ export interface Storage {
   softDeleteExpense(id: string, now: number): Promise<void>
   /** Sum of (non-soft-deleted) expenses in cents for one project. */
   sumExpensesForProject(projectId: string): Promise<number>
+  /** Aggregate AI cost + tokens across all agent runs of one project. */
+  sumAgentRunCostForProject(projectId: string): Promise<AgentRunCostTotals>
 
   listSecretsForProject(projectId: string): Promise<SecretRow[]>
   getSecretById(id: string): Promise<SecretRow | null>

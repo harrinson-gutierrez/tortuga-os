@@ -408,6 +408,7 @@ export const agentKindValues = [
   'dev-vite-react',
   'dev-node',
   'designer',
+  'frame-assigner',
   'qa',
   'tech_lead',
   'arch',
@@ -555,9 +556,13 @@ export const designFrames = sqliteTable(
   'design_frames',
   {
     id: text('id').primaryKey(),
-    storyId: text('story_id')
+    // Frames are project-scoped: a Figma design is imported/generated once
+    // for the whole project. storyId is assigned later (by the
+    // frame-assigner agent or the operator) and stays null while pooled.
+    projectId: text('project_id')
       .notNull()
-      .references(() => stories.id, { onDelete: 'cascade' }),
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    storyId: text('story_id').references(() => stories.id, { onDelete: 'set null' }),
     figmaFileKey: text('figma_file_key').notNull(),
     figmaNodeId: text('figma_node_id').notNull(),
     name: text('name').notNull(),
@@ -569,7 +574,8 @@ export const designFrames = sqliteTable(
     deletedAt: integer('deleted_at'),
   },
   (t) => ({
-    uniqueStoryNode: unique('design_frames_story_node_uq').on(t.storyId, t.figmaNodeId),
+    uniqueProjectNode: unique('design_frames_project_node_uq').on(t.projectId, t.figmaNodeId),
+    byProject: index('design_frames_project_idx').on(t.projectId),
     byStory: index('design_frames_story_idx').on(t.storyId),
   }),
 )

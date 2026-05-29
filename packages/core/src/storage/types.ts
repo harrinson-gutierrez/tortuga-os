@@ -318,7 +318,8 @@ export interface KitTemplateRow {
 
 export interface DesignFrameRow {
   id: string
-  storyId: string
+  projectId: string
+  storyId: string | null
   figmaFileKey: string
   figmaNodeId: string
   name: string

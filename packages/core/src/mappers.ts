@@ -390,6 +390,7 @@ export const kitTemplateDTO = (k: KitTemplateRow): KitTemplateDTO => ({
 
 export const designFrameDTO = (d: DesignFrameRow): DesignFrameDTO => ({
   id: d.id,
+  projectId: d.projectId,
   storyId: d.storyId,
   figmaFileKey: d.figmaFileKey,
   figmaNodeId: d.figmaNodeId,

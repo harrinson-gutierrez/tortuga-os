@@ -45,7 +45,8 @@ export async function runFidelityForStory(
       diffPct: null,
       diffImageRel: null,
       frameId: null,
-      reason: 'no Figma baseline frame for this story — import a design first',
+      reason:
+        'no Figma baseline assigned to this story — import the project design and let the frame-assigner (or operator) assign a frame',
     }
   }
 

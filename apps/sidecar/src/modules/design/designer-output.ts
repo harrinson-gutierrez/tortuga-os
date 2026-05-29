@@ -4,10 +4,11 @@ import type { CoreDeps } from '@tortuga-os/core'
 import { logger } from '../../shared/logger'
 import { workspacePathFor } from '../workspace/use-cases'
 import { parseDesignerOutput } from './designer-parser'
+import { queueFrameAssignerRun } from './frame-assigner'
 
 interface DesignContext {
   workspace: string
-  storyId: string
+  projectId: string
 }
 
 async function resolveContextForRun(deps: CoreDeps, runId: string): Promise<DesignContext | null> {
@@ -25,7 +26,7 @@ async function resolveContextForRun(deps: CoreDeps, runId: string): Promise<Desi
   if (!project) return null
   return {
     workspace: project.workspacePath ?? workspacePathFor(project.code),
-    storyId: story.id,
+    projectId: project.id,
   }
 }
 
@@ -67,10 +68,10 @@ export async function handleDesignerOutput(
   }
   const ctx = await resolveContextForRun(deps, runId)
   if (!ctx) {
-    logger.warn({ runId }, 'design: could not resolve story/workspace for designer run')
+    logger.warn({ runId }, 'design: could not resolve project/workspace for designer run')
     return
   }
-  const existing = await deps.storage.listDesignFramesForStory(ctx.storyId)
+  const existing = await deps.storage.listDesignFramesForProject(ctx.projectId)
   const status = parsed.output.mode === 'generate' ? 'generated' : 'imported'
 
   for (const frame of parsed.output.frames) {
@@ -92,9 +93,12 @@ export async function handleDesignerOutput(
         now: deps.now(),
       })
     } else {
+      // New frames land in the project pool (storyId null); the
+      // frame-assigner run distributes them to build stories next.
       await deps.storage.createDesignFrame({
         id: frameId,
-        storyId: ctx.storyId,
+        projectId: ctx.projectId,
+        storyId: null,
         figmaFileKey: frame.figmaFileKey,
         figmaNodeId: frame.figmaNodeId,
         name: frame.name,
@@ -107,7 +111,15 @@ export async function handleDesignerOutput(
     }
   }
   logger.info(
-    { runId, storyId: ctx.storyId, frames: parsed.output.frames.length, mode: parsed.output.mode },
+    {
+      runId,
+      projectId: ctx.projectId,
+      frames: parsed.output.frames.length,
+      mode: parsed.output.mode,
+    },
     'design: persisted designer output',
   )
+
+  // Auto-distribute the freshly-imported frames to their build stories.
+  await queueFrameAssignerRun(deps, ctx.projectId, runId)
 }

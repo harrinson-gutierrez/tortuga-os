@@ -337,6 +337,15 @@ export interface ProjectCostReportDTO {
   spentCents: number
   reworkCostCents: number
   clientReworkCostCents: number
+  /** Manually-entered expenses (contractors, SaaS, hosting…). */
+  expensesCents: number
+  /** AI/agent spend aggregated across all runs of the project. */
+  aiCostCents: number
+  aiTokensIn: number
+  aiTokensOut: number
+  aiRunCount: number
+  /** budget − labor spent − expenses − AI cost. Can be negative. */
+  marginCents: number
   byPhase: PhaseCostBreakdownDTO[]
   generatedAt: number
 }
@@ -554,7 +563,8 @@ export interface ProjectMcpDTO {
 
 export interface DesignFrameDTO {
   id: string
-  storyId: string
+  projectId: string
+  storyId: string | null
   figmaFileKey: string
   figmaNodeId: string
   name: string

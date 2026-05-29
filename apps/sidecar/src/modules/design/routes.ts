@@ -14,29 +14,32 @@ export const designRouter = new Hono()
       return c.json({ error: `not a valid Figma URL: ${body.figmaUrl}` }, 400)
     }
     const runId = await queueDesignerRun(coreDeps(), {
-      storyId: body.storyId,
+      projectCode: body.projectCode,
       mode: 'import',
       figmaFileKey: target.fileKey,
       figmaNodeId: target.nodeId,
     })
     if (!runId) {
-      return c.json({ error: `could not queue designer run for story ${body.storyId}` }, 422)
+      return c.json({ error: `could not queue designer run for project ${body.projectCode}` }, 422)
     }
-    logger.info({ storyId: body.storyId, runId, fileKey: target.fileKey }, 'design: import queued')
-    return c.json({ runId, storyId: body.storyId }, 201)
+    logger.info(
+      { projectCode: body.projectCode, runId, fileKey: target.fileKey },
+      'design: import queued',
+    )
+    return c.json({ runId, projectCode: body.projectCode }, 201)
   })
   .post('/generate', async (c): Promise<Response> => {
     const body = GenerateDesignInput.parse(await c.req.json())
     const runId = await queueDesignerRun(coreDeps(), {
-      storyId: body.storyId,
+      projectCode: body.projectCode,
       mode: 'generate',
       intent: body.intent,
     })
     if (!runId) {
-      return c.json({ error: `could not queue designer run for story ${body.storyId}` }, 422)
+      return c.json({ error: `could not queue designer run for project ${body.projectCode}` }, 422)
     }
-    logger.info({ storyId: body.storyId, runId }, 'design: generate queued')
-    return c.json({ runId, storyId: body.storyId }, 201)
+    logger.info({ projectCode: body.projectCode, runId }, 'design: generate queued')
+    return c.json({ runId, projectCode: body.projectCode }, 201)
   })
   .post('/:frameId/approve', async (c): Promise<Response> => {
     const frameId = c.req.param('frameId')

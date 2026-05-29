@@ -644,6 +644,12 @@ export function createApiClient(config: ApiClientConfig) {
     },
 
     designFrames: {
+      listForProject: (projectCode: string) =>
+        request<DesignFrameDTO[]>(
+          config,
+          'GET',
+          `/api/design-frames/project/${encodeURIComponent(projectCode)}`,
+        ),
       listForStory: (storyId: string) =>
         request<DesignFrameDTO[]>(
           config,
@@ -655,11 +661,24 @@ export function createApiClient(config: ApiClientConfig) {
         request<DesignFrameDTO>(config, 'PATCH', `/api/design-frames/${id}`, input),
       remove: (id: string) => request<{ ok: true }>(config, 'DELETE', `/api/design-frames/${id}`),
       // Import/generate are handled by the sidecar `design` module: they
-      // queue a `designer` agent run that talks to the Figma MCP.
+      // queue a `designer` agent run (project-level) that talks to the Figma MCP.
       import: (input: ImportDesignInput) =>
-        request<{ runId: string; storyId: string }>(config, 'POST', '/api/design/import', input),
+        request<{ runId: string; projectCode: string }>(
+          config,
+          'POST',
+          '/api/design/import',
+          input,
+        ),
       generate: (input: GenerateDesignInput) =>
-        request<{ runId: string; storyId: string }>(config, 'POST', '/api/design/generate', input),
+        request<{ runId: string; projectCode: string }>(
+          config,
+          'POST',
+          '/api/design/generate',
+          input,
+        ),
+      // Assign or unassign a pooled frame to a build story.
+      assign: (frameId: string, storyId: string | null) =>
+        request<DesignFrameDTO>(config, 'PATCH', `/api/design-frames/${frameId}`, { storyId }),
       approve: (frameId: string) =>
         request<DesignFrameDTO>(config, 'POST', `/api/design/${frameId}/approve`, {}),
     },
