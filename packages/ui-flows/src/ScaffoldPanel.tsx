@@ -81,6 +81,7 @@ export function ScaffoldPanel({
   const [history, setHistory] = useState<ScaffoldHistoryRun[]>([])
   const [historyLoaded, setHistoryLoaded] = useState(false)
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: load once per (client, projectCode)
   useEffect(() => {
     let alive = true
     void client.scaffold
@@ -210,7 +211,10 @@ export function ScaffoldPanel({
         }
         return prev
       })
-      void client.scaffold.history(projectCode).then((h) => setHistory(h.runs ?? [])).catch(() => {})
+      void client.scaffold
+        .history(projectCode)
+        .then((h) => setHistory(h.runs ?? []))
+        .catch(() => {})
     }
   }
 
@@ -342,12 +346,7 @@ export function ScaffoldPanel({
                     )}
                   </div>
                   <div className="mt-3 flex justify-end gap-2 flex-wrap">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={start}
-                      disabled={running || agentRecreating}
-                    >
+                    <Button size="sm" variant="ghost" onClick={start} disabled={agentRecreating}>
                       Reintentar manual
                     </Button>
                     {!taskId && (
@@ -359,7 +358,7 @@ export function ScaffoldPanel({
                       <Button
                         size="sm"
                         variant="turtle"
-                        disabled={running || agentRecreating}
+                        disabled={agentRecreating}
                         onClick={async () => {
                           setAgentRecreating(true)
                           setError(null)
@@ -443,9 +442,7 @@ function HistoryAccordion({ history }: { history: ScaffoldHistoryRun[] }) {
         onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center justify-between text-left text-[12px] text-text-muted hover:text-text"
       >
-        <span>
-          Historial de ejecuciones previas ({history.length})
-        </span>
+        <span>Historial de ejecuciones previas ({history.length})</span>
         <span>{open ? '▾' : '▸'}</span>
       </button>
       {open && (
@@ -664,9 +661,7 @@ export function CoworkerLiveView({
         )}
       </div>
       {pollError && <div className="mt-2 text-[12px] text-danger">{pollError}</div>}
-      {run?.errorMessage && (
-        <div className="mt-2 text-[12px] text-danger">{run.errorMessage}</div>
-      )}
+      {run?.errorMessage && <div className="mt-2 text-[12px] text-danger">{run.errorMessage}</div>}
       {run?.output && (
         <pre className="mt-3 text-[11px] font-mono whitespace-pre-wrap text-text-soft max-h-[400px] overflow-y-auto m-0">
           {run.output}

@@ -1,5 +1,5 @@
-import { randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { coreDeps } from '../../shared/core-deps'
@@ -69,7 +69,10 @@ export function readScaffoldHistory(workspace: string): PersistedScaffoldHistory
     }
     return parsed
   } catch (err) {
-    logger.warn({ err: (err as Error).message, p }, 'scaffold-history: read failed, returning empty')
+    logger.warn(
+      { err: (err as Error).message, p },
+      'scaffold-history: read failed, returning empty',
+    )
     return { version: 1, runs: [] }
   }
 }
@@ -384,7 +387,10 @@ function runOne(
   return new Promise<number>((resolve) => {
     const TIMEOUT_MS = 5 * 60_000
     const killer = setTimeout(() => {
-      onChunk(`\n[scaffold] step timed out after ${TIMEOUT_MS / 1000}s — killing process tree\n`, true)
+      onChunk(
+        `\n[scaffold] step timed out after ${TIMEOUT_MS / 1000}s — killing process tree\n`,
+        true,
+      )
       child.kill('SIGTERM')
       setTimeout(() => child.kill('SIGKILL'), 5_000).unref()
     }, TIMEOUT_MS)

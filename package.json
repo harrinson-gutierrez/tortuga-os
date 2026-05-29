@@ -33,7 +33,7 @@
     "better-sqlite3": "^11.5.0",
     "concurrently": "^9.1.0",
     "dependency-cruiser": "^16.7.0",
-    "drizzle-orm": "^0.36.4",
+    "drizzle-orm": "^0.45.2",
     "sharp": "^0.34.5",
     "typescript": "^5.6.3",
     "vitest": "^2.1.8"

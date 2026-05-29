@@ -5,12 +5,8 @@ import { streamSSE } from 'hono/streaming'
 import { z } from 'zod'
 import { coreDeps, unwrap } from '../../shared/core-deps'
 import { validateBody } from '../../shared/validate'
-import {
-  previewScaffold,
-  readScaffoldHistory,
-  runScaffold,
-} from './service'
 import { workspacePathFor } from '../workspace/use-cases'
+import { previewScaffold, readScaffoldHistory, runScaffold } from './service'
 
 const PreviewBody = z.object({
   projectCode: z.string().min(1).max(64),
@@ -37,37 +33,34 @@ const RepairBody = z.object({
 
 function buildRepairPrompt(input: z.infer<typeof RepairBody>): string {
   const stepsBlock = input.failedSteps
-    .map(
-      (s) =>
-        `### Step "${s.id}" (${s.label}) — FAILED\n\n\`\`\`\n${s.log.slice(-4000)}\n\`\`\``,
-    )
+    .map((s) => `### Step "${s.id}" (${s.label}) — FAILED\n\n\`\`\`\n${s.log.slice(-4000)}\n\`\`\``)
     .join('\n\n')
   return [
-    `# Scaffold repair request`,
-    ``,
+    '# Scaffold repair request',
+    '',
     `Project: ${input.projectCode}`,
     `Stack: ${input.stack}`,
     `Task: ${input.taskId}`,
-    ``,
-    `The deterministic scaffold pipeline finished but the following`,
-    `verify steps failed. The Flutter project lives in \`05-build/app/\``,
-    `RELATIVE to your WORKSPACE_ROOT. ALL flutter commands MUST run with`,
-    `\`cd 05-build/app && flutter ...\` — never from the workspace root.`,
-    `Repair until \`flutter analyze\` and \`flutter test\` both exit 0.`,
-    ``,
-    `## Failed steps`,
-    ``,
+    '',
+    'The deterministic scaffold pipeline finished but the following',
+    'verify steps failed. The Flutter project lives in `05-build/app/`',
+    'RELATIVE to your WORKSPACE_ROOT. ALL flutter commands MUST run with',
+    '`cd 05-build/app && flutter ...` — never from the workspace root.',
+    'Repair until `flutter analyze` and `flutter test` both exit 0.',
+    '',
+    '## Failed steps',
+    '',
     stepsBlock,
-    ``,
-    `## What to do now`,
-    ``,
-    `1. \`cd 05-build/app && cat pubspec.yaml\` and \`flutter --version\` to ground yourself.`,
-    `2. Diagnose. Edit \`05-build/app/pubspec.yaml\` and \`05-build/app/test/*\` files as needed.`,
-    `3. \`cd 05-build/app && flutter pub get && flutter analyze --no-pub --no-fatal-infos\`.`,
-    `4. When analyze passes, \`cd 05-build/app && flutter test --reporter=expanded\`.`,
-    `5. Iterate until both pass or you hit ~6 attempts.`,
-    `6. Write \`REPAIR_SUMMARY.md\` at the workspace root (NOT inside 05-build/app).`,
-    `7. End with a single line: \`OK\` or \`GAVE_UP: <reason>\`.`,
+    '',
+    '## What to do now',
+    '',
+    '1. `cd 05-build/app && cat pubspec.yaml` and `flutter --version` to ground yourself.',
+    '2. Diagnose. Edit `05-build/app/pubspec.yaml` and `05-build/app/test/*` files as needed.',
+    '3. `cd 05-build/app && flutter pub get && flutter analyze --no-pub --no-fatal-infos`.',
+    '4. When analyze passes, `cd 05-build/app && flutter test --reporter=expanded`.',
+    '5. Iterate until both pass or you hit ~6 attempts.',
+    '6. Write `REPAIR_SUMMARY.md` at the workspace root (NOT inside 05-build/app).',
+    '7. End with a single line: `OK` or `GAVE_UP: <reason>`.',
   ].join('\n')
 }
 

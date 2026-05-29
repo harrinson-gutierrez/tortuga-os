@@ -22,7 +22,7 @@
     "@tortuga-os/core": "workspace:*",
     "@tortuga-os/domain": "workspace:*",
     "better-sqlite3": "^11.5.0",
-    "drizzle-orm": "^0.36.4"
+    "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {
     "@tortuga-os/tsconfig": "workspace:*",

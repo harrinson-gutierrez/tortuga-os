@@ -131,6 +131,7 @@ export function TaskDetail({
     [client, currentIter?.id, refreshKey, globalKey, gatesKey],
   )
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: bumpGates is stable; only react to gates.data
   useEffect(() => {
     const hasRunning = gates.data?.some((g) => g.status === 'pending')
     if (!hasRunning) return
@@ -666,12 +667,7 @@ function buildSteps(args: {
             label="Verificación del código"
             onChanged={onChanged}
           />
-          <RereverifyInline
-            client={client}
-            taskId={taskId}
-            stack={stack}
-            onChanged={onChanged}
-          />
+          <RereverifyInline client={client} taskId={taskId} stack={stack} onChanged={onChanged} />
         </>
       ) : null,
   }
@@ -845,8 +841,7 @@ function buildSteps(args: {
   // deterministic gates already proved the code builds, types check, and
   // tests pass. Allow approve without waiting for the QA agent.
   const gatesAutoApprove = gatesPassed && (manuallyTested || !isFlutterImpl)
-  const canApprove =
-    (qaApproved || qaRejected || qaVerdictMissing || gatesAutoApprove) && inWork
+  const canApprove = (qaApproved || qaRejected || qaVerdictMissing || gatesAutoApprove) && inWork
   const stepApprove: Step = {
     id: 'approve',
     title: isApproved ? 'Aprobada ✓' : isRejected ? 'Rechazada' : 'Aprobar o rechazar',
@@ -1150,7 +1145,6 @@ function VerifyInline({
   const [recheckBusy, setRecheckBusy] = useState(false)
   const isFlutter = stack === 'flutter'
 
-
   async function hasLiveDevice(): Promise<boolean> {
     try {
       const { devices } = await client.preview.listDevices()
@@ -1237,9 +1231,7 @@ function VerifyInline({
                   ['G5_FIDELITY', fidelityGate],
                   ['G4_BOOT', bootGate],
                 ]
-                const firstPending = ordered.find(
-                  ([, g]) => !g || g.status === 'pending',
-                )
+                const firstPending = ordered.find(([, g]) => !g || g.status === 'pending')
                 return firstPending ? [firstPending[0]] : []
               })()
             : []
@@ -1258,10 +1250,10 @@ function VerifyInline({
             ⚠ Boot smoke necesita un emulador encendido
           </div>
           <div className="mt-1 text-[12px] text-text-soft">
-            No detecté ningún dispositivo conectado por adb. Levanta un emulador desde el panel
-            del lado (o conecta un Android físico), espera a que aparezca como{' '}
-            <code>device</code>, y luego presiona <strong>↻ Validar de nuevo</strong>. Los demás
-            gates (analyze, build, tests, golden) ya corrieron sin necesitar device.
+            No detecté ningún dispositivo conectado por adb. Levanta un emulador desde el panel del
+            lado (o conecta un Android físico), espera a que aparezca como <code>device</code>, y
+            luego presiona <strong>↻ Validar de nuevo</strong>. Los demás gates (analyze, build,
+            tests, golden) ya corrieron sin necesitar device.
           </div>
           <div className="mt-3 flex justify-end">
             <Button variant="turtle" onClick={recheckAndRunBoot} disabled={recheckBusy}>
@@ -2286,7 +2278,6 @@ function QaVerdictCard({
   )
 }
 
-
 function ApproveRejectInline({
   client,
   taskId,
@@ -2559,9 +2550,7 @@ function StepAckPanel({
   if (ack?.ack === 'ok') {
     return (
       <div className="mt-3 rounded-md border border-turtle/40 bg-turtle/5 p-3 flex items-center justify-between gap-2">
-        <span className="text-[12px] text-turtle">
-          ✓ {label} — confirmado por ti
-        </span>
+        <span className="text-[12px] text-turtle">✓ {label} — confirmado por ti</span>
         <Button size="sm" variant="ghost" onClick={undo} disabled={busy}>
           {busy ? '…' : '↩ Deshacer'}
         </Button>
@@ -2572,9 +2561,7 @@ function StepAckPanel({
   if (ack?.ack === 'fail') {
     return (
       <div className="mt-3 rounded-md border border-danger/40 bg-danger/5 p-3 flex items-center justify-between gap-2">
-        <span className="text-[12px] text-danger">
-          ✗ {label} — marcado como falla por ti
-        </span>
+        <span className="text-[12px] text-danger">✗ {label} — marcado como falla por ti</span>
         <Button size="sm" variant="ghost" onClick={undo} disabled={busy}>
           {busy ? '…' : '↩ Deshacer'}
         </Button>
@@ -2723,6 +2710,7 @@ function GateRow({
     }
   }, [effectiveStatus])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tick owns its own offset via ref
   useEffect(() => {
     if (!open) return
     let cancelled = false
@@ -2772,7 +2760,10 @@ function GateRow({
       {open && (
         <>
           <pre className="mt-2 text-[11px] font-mono whitespace-pre-wrap text-text-soft max-h-[260px] overflow-y-auto m-0">
-            {log || (effectiveStatus === 'pending' ? '(no se ha ejecutado todavía)' : 'Esperando salida…')}
+            {log ||
+              (effectiveStatus === 'pending'
+                ? '(no se ha ejecutado todavía)'
+                : 'Esperando salida…')}
           </pre>
           {effectiveStatus === 'failed' && !repairRunId && (
             <div className="mt-2 flex items-center justify-end gap-2">
@@ -2915,9 +2906,8 @@ function ReopenInline({
   return (
     <div className="rounded-md border border-warning/40 bg-warning/5 p-3">
       <div className="text-[12px] text-text">
-        Revertir abre una nueva iteración y devuelve la tarea a{' '}
-        <code>in_progress</code>. Si esta era la última tarea aprobada de su
-        story / phase, esos también vuelven a estar en curso.
+        Revertir abre una nueva iteración y devuelve la tarea a <code>in_progress</code>. Si esta
+        era la última tarea aprobada de su story / phase, esos también vuelven a estar en curso.
       </div>
       <div className="mt-3">
         <TextField

@@ -204,10 +204,8 @@ export function createApiClient(config: ApiClientConfig) {
         ),
       reset: (taskId: string, types: GateType[]) =>
         request<{ deleted: number }>(config, 'POST', `/api/gates/reset/${taskId}`, { types }),
-      repair: (
-        taskId: string,
-        input: { gateType: GateType; gateLabel: string; log: string },
-      ) => request<AgentRunDTO>(config, 'POST', `/api/gates/repair/${taskId}`, input),
+      repair: (taskId: string, input: { gateType: GateType; gateLabel: string; log: string }) =>
+        request<AgentRunDTO>(config, 'POST', `/api/gates/repair/${taskId}`, input),
       preview: (stack: string, gates?: GateType[]) =>
         request<{
           stack: string
