@@ -185,6 +185,8 @@ export const INBOX_KINDS = [
   'gate_failed',
   'task_blocked',
   'release_built',
+  'troubleshoot_escalated',
+  'troubleshoot_verified',
   'info',
 ] as const
 export type InboxKind = (typeof INBOX_KINDS)[number]

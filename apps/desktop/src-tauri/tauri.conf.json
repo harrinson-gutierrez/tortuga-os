@@ -40,7 +40,13 @@
       "icons/icon.ico"
     ],
     "publisher": "Tortuga OS",
-    "resources": ["../../sidecar/dist-bundle/**/*"]
+    "resources": ["../../sidecar/dist-bundle/**/*"],
+    "windows": {
+      "signCommand": {
+        "cmd": "pwsh",
+        "args": ["-NoProfile", "-File", "../../../scripts/authenticode-sign.ps1", "%1"]
+      }
+    }
   },
   "plugins": {
     "updater": {

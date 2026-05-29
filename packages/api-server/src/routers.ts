@@ -15,6 +15,7 @@ import {
   CreateSecretInput,
   CreateStoryInput,
   CreateTaskInput,
+  InstantiateKitInput,
   LogWorkEntryInput,
   PatchClientInput,
   PatchExpenseInput,
@@ -480,6 +481,19 @@ export function buildDomainRouter(deps: CoreDeps): Hono {
   )
   r.delete('/kit-templates/:id', async (c) =>
     respond(c, await useCases.kitTemplates.deleteKitTemplate(deps, c.req.param('id'))),
+  )
+  r.post('/kit-templates/:id/instantiate', async (c) =>
+    respond(
+      c,
+      await useCases.kitTemplates.instantiateKit(
+        deps,
+        InstantiateKitInput.parse({
+          ...(await c.req.json()),
+          kitTemplateId: c.req.param('id'),
+        }),
+      ),
+      201,
+    ),
   )
 
   r.get('/expenses/project/:code', async (c) =>

@@ -64,10 +64,17 @@ jobs:
       - name: Install deps
         run: pnpm install --frozen-lockfile
 
+      # Authenticode signing runs INSIDE the bundle pipeline via the
+      # bundle.windows.signCommand hook (scripts/authenticode-sign.ps1), so
+      # the installer is signed before Tauri generates its updater .sig and
+      # the two stay consistent. The cert secrets are passed as env here; the
+      # script no-ops when WINDOWS_CERT_PFX_BASE64 is absent.
       - name: Build Tauri bundle
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
         run: pnpm tauri build ${{ matrix.platform.target && format('--target {0}', matrix.platform.target) || '' }}
 
       - name: Upload bundle artifacts

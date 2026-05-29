@@ -15,6 +15,7 @@ import { logger } from '../../shared/logger'
 import { workspacePathFor } from '../workspace/use-cases'
 import { applyDiagnosisFiles } from './applier'
 import { queueDiagnosisRun } from './diagnosis-queue'
+import { recordEvidence } from './evidence'
 
 /**
  * Decode a base64 PNG into a fresh file inside
@@ -111,6 +112,12 @@ export const troubleshootRouter = new Hono()
       { reportId, taskId, runId, storyId: body.storyId },
       'troubleshoot: bugfix task + report created and queued',
     )
+    await recordEvidence(coreDeps(), workspace, reportId, {
+      at: Date.now(),
+      kind: 'created',
+      detail: 'bugfix report created',
+    })
+    await recordEvidence(coreDeps(), workspace, reportId, { at: Date.now(), kind: 'diagnosing' })
     return c.json({ taskId, reportId } satisfies CreateBugfixOutput, 201)
   })
   .post('/', async (c): Promise<Response> => {
@@ -154,6 +161,14 @@ export const troubleshootRouter = new Hono()
       { reportId: created.value.id, runId, taskId: body.taskId },
       'troubleshoot: created and queued diagnosis',
     )
+    await recordEvidence(coreDeps(), workspace, created.value.id, {
+      at: Date.now(),
+      kind: 'created',
+    })
+    await recordEvidence(coreDeps(), workspace, created.value.id, {
+      at: Date.now(),
+      kind: 'diagnosing',
+    })
     return c.json(created.value satisfies TroubleshootReportDTO, 201)
   })
   .post('/:id/rediagnose', async (c): Promise<Response> => {
@@ -230,10 +245,18 @@ export const troubleshootRouter = new Hono()
       ...body,
       afterScreenshotPath: afterPath,
     })
+    if (workspace) {
+      await recordEvidence(coreDeps(), workspace, id, { at: Date.now(), kind: 'resolved' })
+    }
     return c.json(unwrap(result) satisfies TroubleshootReportDTO)
   })
   .post('/:id/dismiss', async (c): Promise<Response> => {
     const id = c.req.param('id')
     const result = await useCases.troubleshoot.dismissTroubleshoot(coreDeps(), id)
-    return c.json(unwrap(result) satisfies TroubleshootReportDTO)
+    const dismissed = unwrap(result) satisfies TroubleshootReportDTO
+    const workspace = await resolveWorkspaceForTask(dismissed.taskId)
+    if (workspace) {
+      await recordEvidence(coreDeps(), workspace, id, { at: Date.now(), kind: 'dismissed' })
+    }
+    return c.json(dismissed)
   })

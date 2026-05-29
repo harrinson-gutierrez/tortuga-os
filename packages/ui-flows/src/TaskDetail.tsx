@@ -393,10 +393,11 @@ function buildSteps(args: {
   } = args
   const ackByStepId = new Map(stepAcks.map((a) => [a.stepId, a]))
   const ackOf = (stepId: string): StepAckDTO | null => ackByStepId.get(stepId) ?? null
-  // hasActiveQaRun is kept on the args type for symmetry with hasActiveDevRun
-  // and to make future step-QA logic easier; the step currently derives its
-  // own active flag from qaRuns[0].status. Suppress unused destructure.
-  void args.hasActiveQaRun
+  // Any agent run in flight (dev/gate-fixer/troubleshooter or qa). Used to
+  // disable the per-gate "Reparar con agente" CTA so the operator can't fan
+  // out multiple fixers at once — concurrent fixers were colliding on the
+  // Claude CLI session id and failing.
+  const anyAgentBusy = hasActiveDevRun || args.hasActiveQaRun
 
   const isApproved = task.status === 'approved'
   const isRejected = task.status === 'rejected'
@@ -643,6 +644,7 @@ function buildSteps(args: {
           realWorkGate={realWorkGate}
           fidelityGate={fidelityGate}
           bootGate={bootGate}
+          agentBusy={anyAgentBusy}
           onChanged={onChanged}
         />
       ) : gatesPassed && !isApproved && !isRejected ? (
@@ -1205,6 +1207,7 @@ function VerifyInline({
   realWorkGate,
   fidelityGate,
   bootGate,
+  agentBusy,
   onChanged,
 }: {
   client: ApiClient
@@ -1217,6 +1220,7 @@ function VerifyInline({
   realWorkGate: GateDTO | null
   fidelityGate: GateDTO | null
   bootGate: GateDTO | null
+  agentBusy: boolean
   onChanged: () => void
 }) {
   const [busy, setBusy] = useState(false)
@@ -1316,6 +1320,7 @@ function VerifyInline({
               })()
             : []
         }
+        agentBusy={agentBusy || busy}
       />
       {error && <div className="text-[12px] text-danger">{error}</div>}
       <div className="flex justify-end">
@@ -2710,6 +2715,7 @@ function GatesSummary({
   fidelityGate,
   bootGate,
   runningGates,
+  agentBusy = false,
 }: {
   client: ApiClient
   taskId: string
@@ -2720,6 +2726,10 @@ function GatesSummary({
   fidelityGate: GateDTO | null
   bootGate: GateDTO | null
   runningGates: GateType[]
+  /** True when any agent run (dev/gate-fixer/troubleshooter/qa) is queued or
+   *  running — disables the per-gate "Reparar con agente" CTA so the operator
+   *  can't fan out several fixers at once. */
+  agentBusy?: boolean
 }) {
   const [cmds, setCmds] = useState<Record<string, string>>({})
 
@@ -2762,6 +2772,7 @@ function GatesSummary({
           gate={r.gate}
           cmd={cmds[r.type] ?? null}
           isRunning={runningGates.includes(r.type)}
+          agentBusy={agentBusy}
         />
       ))}
     </div>
@@ -2776,6 +2787,7 @@ function GateRow({
   gate,
   cmd,
   isRunning,
+  agentBusy,
 }: {
   client: ApiClient
   taskId: string
@@ -2784,6 +2796,7 @@ function GateRow({
   gate: GateDTO | null
   cmd: string | null
   isRunning: boolean
+  agentBusy: boolean
 }) {
   const dbStatus = gate?.status ?? 'pending'
   const effectiveStatus: 'running' | 'passed' | 'failed' | 'skipped' | 'pending' =
@@ -2819,7 +2832,10 @@ function GateRow({
 
   useEffect(() => {
     if (!userToggledRef.current) {
-      setOpen(effectiveStatus === 'running')
+      // Auto-expand while running (live log) and on failure, so the error
+      // output and the "Reparar con agente" CTA are visible without the
+      // operator having to discover the collapsed accordion.
+      setOpen(effectiveStatus === 'running' || effectiveStatus === 'failed')
     }
   }, [effectiveStatus])
 
@@ -2881,10 +2897,15 @@ function GateRow({
           {effectiveStatus === 'failed' && !repairRunId && (
             <div className="mt-2 flex items-center justify-end gap-2">
               {repairError && <span className="text-[11px] text-danger">{repairError}</span>}
+              {agentBusy && (
+                <span className="text-[11px] text-text-muted">
+                  Hay un agente trabajando. Espera a que termine.
+                </span>
+              )}
               <Button
                 size="sm"
                 variant="turtle"
-                disabled={repairBusy}
+                disabled={repairBusy || agentBusy}
                 onClick={async () => {
                   setRepairBusy(true)
                   setRepairError(null)

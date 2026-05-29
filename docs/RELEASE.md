@@ -161,14 +161,17 @@ contents of `~/.tortuga/updater.key`) and
 
 ## 5. Open items
 
-- [ ] **Code signing** — the updater signature verifies the binary is
-      authentic, but on Windows the installer itself still triggers a
-      SmartScreen warning on first run because the .exe isn't signed
-      with an Authenticode certificate. Buy an EV cert from
-      DigiCert/Sectigo when budget allows; then add
-      `WINDOWS_CERT_PFX_BASE64` + `WINDOWS_CERT_PASSWORD` secrets and
-      a `signtool` step before the upload-artifact step in the
-      Windows job of `release.yml`.
+- [x] **Windows Authenticode wiring** — `release.yml` passes
+      `WINDOWS_CERT_PFX_BASE64` + `WINDOWS_CERT_PASSWORD` into the build,
+      and Tauri's `bundle.windows.signCommand` hook runs
+      `scripts/authenticode-sign.ps1` to sign each installer BEFORE the
+      updater `.sig` is generated (so the two stay consistent). The
+      script no-ops when the cert secret is absent, so local and
+      unsigned-CI builds still succeed.
+- [ ] **Authenticode certificate** — buy an EV cert from
+      DigiCert/Sectigo when budget allows, then set the two repo secrets
+      above. Until then installers ship unsigned and Windows shows a
+      SmartScreen warning on first run (the updater `.sig` is unaffected).
 - [ ] macOS notarization (Apple Developer ID + `xcrun notarytool`)
       when shipping macOS builds.
 - [ ] Replace the `REPLACE_WITH_REAL_ED25519_PUBKEY` placeholder in

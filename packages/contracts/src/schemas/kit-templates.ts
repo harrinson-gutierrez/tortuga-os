@@ -43,3 +43,18 @@ export const PatchKitTemplateInput = z.object({
   snapshot: KitSnapshot.optional(),
 })
 export type PatchKitTemplateInput = z.infer<typeof PatchKitTemplateInput>
+
+export const InstantiateKitInput = z.object({
+  kitTemplateId: z.string().min(1),
+  projectCode: z.string().min(1),
+})
+export type InstantiateKitInput = z.infer<typeof InstantiateKitInput>
+
+export const InstantiateKitResult = z.object({
+  projectCode: z.string(),
+  quoteId: z.string(),
+  modulesCreated: z.number().int().nonnegative(),
+  milestonesCreated: z.number().int().nonnegative(),
+  storiesCreated: z.number().int().nonnegative(),
+})
+export type InstantiateKitResult = z.infer<typeof InstantiateKitResult>

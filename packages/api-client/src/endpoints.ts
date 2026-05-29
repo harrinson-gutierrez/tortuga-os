@@ -30,6 +30,7 @@ import type {
   GateDTO,
   GateType,
   InboxItemDTO,
+  InstantiateKitResult,
   IterationDTO,
   KitTemplateDTO,
   LogWorkEntryInput,
@@ -625,6 +626,10 @@ export function createApiClient(config: ApiClientConfig) {
       patch: (id: string, input: PatchKitTemplateInput) =>
         request<KitTemplateDTO>(config, 'PATCH', `/api/kit-templates/${id}`, input),
       remove: (id: string) => request<{ ok: true }>(config, 'DELETE', `/api/kit-templates/${id}`),
+      instantiate: (id: string, projectCode: string) =>
+        request<InstantiateKitResult>(config, 'POST', `/api/kit-templates/${id}/instantiate`, {
+          projectCode,
+        }),
     },
 
     expenses: {
