@@ -111,21 +111,7 @@ function readCanonBundle(): string {
   return body
 }
 
-function buildSessionId(
-  agentKind: string,
-  parentPhaseId: string | null,
-  attemptIndex: number,
-): string {
-  if (SESSION_RESET_KINDS.has(agentKind) || !parentPhaseId) {
-    return randomUUID()
-  }
-  // Discriminate by phase + kind + attempt so:
-  //  - F2/F3/F4 of the same phase still get different ids (cross-role
-  //    runs CAN'T share a Claude CLI session anyway: the CLI persists
-  //    "Session ID is already in use" once consumed).
-  //  - Re-running the SAME (phase, kind) twice yields a fresh id and
-  //    avoids the "already in use" error we hit in production.
-  const seed = `tortuga-phase:${parentPhaseId}:${agentKind}:${attemptIndex}`
+function uuidFromSeed(seed: string): string {
   const hex = createHash('sha1').update(seed).digest('hex')
   return [
     hex.slice(0, 8),
@@ -134,6 +120,22 @@ function buildSessionId(
     `8${hex.slice(17, 20)}`,
     hex.slice(20, 32),
   ].join('-')
+}
+
+function buildSessionId(agentKind: string, runId: string, parentPhaseId: string | null): string {
+  // Derive the Claude CLI session id from the run id, which the database
+  // guarantees is unique. The earlier scheme keyed the id on
+  // (phase, kind, attemptIndex), where attemptIndex was a count of prior
+  // runs — under fast retries (gate-fixer relaunched 2-3×) two queued runs
+  // could read the same count before either committed, produce the SAME
+  // session id, and the second hit "Session ID is already in use" (the CLI
+  // burns an id once consumed). Keying on run.id removes that race entirely:
+  // every run gets its own session. Cross-role runs never shared a session
+  // anyway. Standalone kinds (qa, etc.) still get a fully random id.
+  if (SESSION_RESET_KINDS.has(agentKind) || !parentPhaseId) {
+    return randomUUID()
+  }
+  return uuidFromSeed(`tortuga-run:${runId}`)
 }
 
 function parseJsonObjectSafely(s: string): Record<string, string> {
@@ -469,11 +471,7 @@ async function processOneRun(deps: CoreDeps, runId: string): Promise<void> {
     canonBundle ? `${canonBundle}\n\n${run.userPrompt}` : run.userPrompt,
     workspace,
   )
-  const priorRuns = await deps.storage.listAgentRunsForTask(run.taskId)
-  const attemptIndex = priorRuns.filter(
-    (r) => r.agentKind === run.agentKind && r.id !== run.id,
-  ).length
-  const sessionId = buildSessionId(run.agentKind, wsCtx.phaseId, attemptIndex)
+  const sessionId = buildSessionId(run.agentKind, run.id, wsCtx.phaseId)
   const effectiveModel = ROLE_MODEL_OVERRIDES[run.agentKind] ?? run.model
 
   let outcome: AgentRunOutcome
