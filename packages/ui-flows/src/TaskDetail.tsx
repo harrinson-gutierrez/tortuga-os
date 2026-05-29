@@ -1305,7 +1305,6 @@ function VerifyInline({
         realWorkGate={realWorkGate}
         fidelityGate={fidelityGate}
         bootGate={bootGate}
-        agentBusy={agentBusy}
         runningGates={
           busy
             ? (() => {
