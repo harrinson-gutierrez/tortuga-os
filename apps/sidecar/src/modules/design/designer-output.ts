@@ -11,6 +11,17 @@ interface DesignContext {
   projectId: string
 }
 
+/**
+ * Outcome of a post-run hook. `ok: false` carries a human-readable reason that
+ * the worker persists onto the run so the operator sees WHY a Figma import
+ * produced nothing, instead of a silent success. `retryableParse` flags the
+ * "agent emitted the wrong format" case the worker can re-queue once with a
+ * corrective prompt.
+ */
+export type HookResult =
+  | { ok: true; detail: string }
+  | { ok: false; reason: string; retryableParse?: boolean }
+
 async function resolveContextForRun(deps: CoreDeps, runId: string): Promise<DesignContext | null> {
   const run = await deps.storage.getAgentRunById(runId)
   if (!run) return null
@@ -32,22 +43,19 @@ async function resolveContextForRun(deps: CoreDeps, runId: string): Promise<Desi
 
 /**
  * Decode a base64 PNG into `03-design/_frames/<frameId>/baseline.png` and
- * return the workspace-relative path. Best-effort: returns null on any
- * failure so a bad screenshot never aborts frame persistence.
+ * return the workspace-relative path. Returns null only when the agent sent an
+ * empty/malformed payload (the frame still persists, just without a baseline);
+ * a real filesystem failure throws so the caller can surface it instead of
+ * silently producing a frame the G5 gate can never compare against.
  */
 function persistBaselinePng(workspace: string, frameId: string, base64: string): string | null {
-  try {
-    const cleaned = base64.replace(/^data:image\/(png|jpeg|jpg);base64,/, '')
-    const buffer = Buffer.from(cleaned, 'base64')
-    if (buffer.byteLength === 0) return null
-    const dir = join(workspace, '03-design', '_frames', frameId)
-    mkdirSync(dir, { recursive: true })
-    writeFileSync(join(dir, 'baseline.png'), buffer)
-    return `03-design/_frames/${frameId}/baseline.png`
-  } catch (err) {
-    logger.warn({ frameId, err: (err as Error).message }, 'design: failed to persist baseline png')
-    return null
-  }
+  const cleaned = base64.replace(/^data:image\/(png|jpeg|jpg);base64,/, '')
+  const buffer = Buffer.from(cleaned, 'base64')
+  if (buffer.byteLength === 0) return null
+  const dir = join(workspace, '03-design', '_frames', frameId)
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'baseline.png'), buffer)
+  return `03-design/_frames/${frameId}/baseline.png`
 }
 
 /**
@@ -60,26 +68,55 @@ export async function handleDesignerOutput(
   deps: CoreDeps,
   runId: string,
   output: string,
-): Promise<void> {
+): Promise<HookResult> {
   const parsed = parseDesignerOutput(output)
   if (!parsed.ok) {
     logger.warn({ runId, reason: parsed.reason }, 'design: designer output parse failed')
-    return
+    return {
+      ok: false,
+      reason: `no se pudo leer el diseño del agente — ${parsed.reason}`,
+      retryableParse: true,
+    }
   }
   const ctx = await resolveContextForRun(deps, runId)
   if (!ctx) {
     logger.warn({ runId }, 'design: could not resolve project/workspace for designer run')
-    return
+    return {
+      ok: false,
+      reason:
+        'no se pudo resolver el proyecto/workspace de este run (task→story→quote→phase→project)',
+    }
+  }
+  if (parsed.output.frames.length === 0) {
+    return {
+      ok: false,
+      reason:
+        'el agente no devolvió ningún frame (¿el link de Figma apunta a un nodo vacío o el MCP no respondió?)',
+      retryableParse: true,
+    }
   }
   const existing = await deps.storage.listDesignFramesForProject(ctx.projectId)
   const status = parsed.output.mode === 'generate' ? 'generated' : 'imported'
+  let baselineFailures = 0
 
   for (const frame of parsed.output.frames) {
     const prior = existing.find((f) => f.figmaNodeId === frame.figmaNodeId)
     const frameId = prior?.id ?? deps.newId()
-    const baselinePath = frame.screenshotBase64
-      ? persistBaselinePng(ctx.workspace, frameId, frame.screenshotBase64)
-      : (prior?.baselineScreenshotPath ?? null)
+    let baselinePath: string | null
+    if (frame.screenshotBase64) {
+      try {
+        baselinePath = persistBaselinePng(ctx.workspace, frameId, frame.screenshotBase64)
+      } catch (err) {
+        baselineFailures++
+        logger.warn(
+          { runId, frameId, err: (err as Error).message },
+          'design: failed to persist baseline png',
+        )
+        baselinePath = prior?.baselineScreenshotPath ?? null
+      }
+    } else {
+      baselinePath = prior?.baselineScreenshotPath ?? null
+    }
 
     if (prior) {
       await deps.storage.patchDesignFrame({
@@ -122,4 +159,14 @@ export async function handleDesignerOutput(
 
   // Auto-distribute the freshly-imported frames to their build stories.
   await queueFrameAssignerRun(deps, ctx.projectId, runId)
+
+  const frameCount = parsed.output.frames.length
+  const base = `${frameCount} frame(s) ${status === 'generated' ? 'generados' : 'importados'}`
+  return {
+    ok: true,
+    detail:
+      baselineFailures > 0
+        ? `${base} · ${baselineFailures} sin baseline PNG (revisar el gate G5)`
+        : base,
+  }
 }

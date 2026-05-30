@@ -105,12 +105,24 @@ export function DesignPanel({ client, projectCode, stories }: DesignPanelProps) 
     }
   }
 
-  // Called when the live view detects the run ended. Refresh frames and
-  // report a result based on whether new frames actually landed — the
-  // designer doesn't emit an "OK" marker, so frame count is the real signal.
+  // Called when the live view detects the run ended. The designer doesn't emit
+  // an "OK" marker, so we read the run's real status: a post-hook failure now
+  // degrades the run to `failed` with a reason on errorMessage, which we show
+  // verbatim instead of a generic "check the sidecar log". On success we also
+  // confirm frames actually landed.
   async function onRunFinished() {
+    const finishedRunId = activeRunId
     setActiveRunId(null)
     try {
+      const run = finishedRunId ? await client.agentRuns.get(finishedRunId) : null
+      if (run && run.status === 'failed') {
+        setResult({
+          ok: false,
+          text: `✗ ${run.errorMessage ?? 'El run falló sin un motivo registrado.'}`,
+        })
+        setRefreshKey((k) => k + 1)
+        return
+      }
       const after = await client.designFrames.listForProject(projectCode)
       const delta = after.length - framesBeforeRunRef.current
       setResult(
@@ -118,11 +130,11 @@ export function DesignPanel({ client, projectCode, stories }: DesignPanelProps) 
           ? { ok: true, text: `✓ Diseño importado: ${delta} frame(s) nuevos.` }
           : {
               ok: false,
-              text: '✗ El run terminó pero no aparecieron frames. Revisa el output del agente arriba y el log del sidecar.',
+              text: '✗ El run terminó sin frames nuevos. Revisa el output del agente arriba.',
             },
       )
     } catch {
-      setResult({ ok: false, text: 'El run terminó pero no pude releer los frames.' })
+      setResult({ ok: false, text: 'El run terminó pero no pude releer su estado.' })
     }
     setRefreshKey((k) => k + 1)
   }

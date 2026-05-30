@@ -1033,6 +1033,15 @@ export function createSqliteStorage(db: Db): Storage {
       return row as AgentRunRow
     },
 
+    async markAgentRunFailed(args) {
+      await db
+        .update(agentRuns)
+        .set({ status: 'failed', errorMessage: args.errorMessage, updatedAt: args.now })
+        .where(eq(agentRuns.id, args.runId))
+      const row = await db.select().from(agentRuns).where(eq(agentRuns.id, args.runId)).get()
+      return row as AgentRunRow
+    },
+
     async getDiscoveryConversationById(id) {
       const row = await db
         .select()

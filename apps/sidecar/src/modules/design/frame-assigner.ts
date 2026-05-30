@@ -3,6 +3,7 @@ import { FrameAssignerOutput } from '@tortuga-os/contracts'
 import type { CoreDeps } from '@tortuga-os/core'
 import { useCases } from '@tortuga-os/core'
 import { logger } from '../../shared/logger'
+import type { HookResult } from './designer-output'
 
 const FENCED_BLOCK = /```(?:json|JSON|jsonc)?\s*([\s\S]*?)```/g
 
@@ -98,11 +99,15 @@ export async function handleFrameAssignerOutput(
   deps: CoreDeps,
   runId: string,
   output: string,
-): Promise<void> {
+): Promise<HookResult> {
   const parsed = parseAssignerOutput(output)
   if (!parsed.ok) {
     logger.warn({ runId, reason: parsed.reason }, 'design: frame-assigner output parse failed')
-    return
+    return {
+      ok: false,
+      reason: `no se pudo leer el reparto de frames del agente — ${parsed.reason}`,
+      retryableParse: true,
+    }
   }
   let applied = 0
   for (const a of parsed.value.assignments) {
@@ -116,4 +121,8 @@ export async function handleFrameAssignerOutput(
     applied++
   }
   logger.info({ runId, applied, total: parsed.value.assignments.length }, 'design: frames assigned')
+  return {
+    ok: true,
+    detail: `${applied}/${parsed.value.assignments.length} frame(s) repartidos a historias`,
+  }
 }

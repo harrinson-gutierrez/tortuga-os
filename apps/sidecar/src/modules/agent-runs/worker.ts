@@ -8,11 +8,11 @@ import {
   ClaudeCliRunner,
 } from '@tortuga-os/agent-runner'
 import type { AgentProvider } from '@tortuga-os/contracts'
-import type { CoreDeps } from '@tortuga-os/core'
+import type { AgentRunRow, CoreDeps } from '@tortuga-os/core'
 import { useCases } from '@tortuga-os/core'
 import { coreDeps } from '../../shared/core-deps'
 import { logger } from '../../shared/logger'
-import { handleDesignerOutput } from '../design/designer-output'
+import { type HookResult, handleDesignerOutput } from '../design/designer-output'
 import { handleFrameAssignerOutput } from '../design/frame-assigner'
 import { renderSkillsBlock, resolveSkillsForRun, skillsRootPath } from '../skills/use-cases'
 import { parseDiagnosisFromOutput } from '../troubleshoot/diagnosis-parser'
@@ -334,6 +334,78 @@ async function resolveWorkspaceForTask(
   }
 }
 
+// Marker appended to a re-queued design run's prompt so we never re-queue the
+// same run more than once when the agent keeps emitting malformed output.
+const DESIGN_RETRY_MARKER = '<!-- design-retry:1 -->'
+
+/**
+ * A designer/frame-assigner post-hook failed. Always persist the reason onto
+ * the run (degrading it to `failed`) so the operator sees it in the UI. When
+ * the failure is a malformed-output parse error and we haven't retried yet,
+ * re-queue the run once with a corrective prompt that restates the required
+ * JSON contract.
+ */
+async function handleDesignHookFailure(
+  deps: CoreDeps,
+  run: AgentRunRow,
+  hookResult: Extract<HookResult, { ok: false }>,
+): Promise<void> {
+  const alreadyRetried = run.userPrompt.includes(DESIGN_RETRY_MARKER)
+  const willRetry = Boolean(hookResult.retryableParse) && !alreadyRetried
+
+  await deps.storage.markAgentRunFailed({
+    runId: run.id,
+    errorMessage: willRetry ? `${hookResult.reason} · reintentando una vez…` : hookResult.reason,
+    now: Date.now(),
+  })
+  logger.warn(
+    { runId: run.id, agentKind: run.agentKind, reason: hookResult.reason, willRetry },
+    'design: post-hook failed',
+  )
+
+  if (!willRetry) {
+    await safeEnqueueRunInbox(deps, {
+      kind: 'agent_run_failed',
+      title: `Diseño (${run.agentKind}) falló`,
+      body: hookResult.reason,
+      projectId: null,
+      taskId: run.taskId,
+      runId: run.id,
+    })
+    return
+  }
+
+  const correctivePrompt = [
+    run.userPrompt,
+    '',
+    DESIGN_RETRY_MARKER,
+    '## CORRECCIÓN OBLIGATORIA',
+    `El intento anterior falló al procesar tu salida: ${hookResult.reason}`,
+    'Emite EXACTAMENTE UN bloque ```json al final con el formato del esquema esperado.',
+    'No incluyas texto después del bloque JSON.',
+  ].join('\n')
+
+  const requeued = await useCases.agentRuns.queueAgentRun(deps, {
+    taskId: run.taskId,
+    agentKind: run.agentKind,
+    provider: run.provider,
+    model: run.model,
+    systemPrompt: run.systemPrompt,
+    userPrompt: correctivePrompt,
+  })
+  if (!requeued.ok) {
+    logger.warn(
+      { runId: run.id, error: requeued.error },
+      'design: failed to re-queue corrective run',
+    )
+  } else {
+    logger.info(
+      { runId: run.id, retryRunId: requeued.value.id },
+      'design: re-queued run with corrective prompt',
+    )
+  }
+}
+
 async function processOneRun(deps: CoreDeps, runId: string): Promise<void> {
   const run = await deps.storage.getAgentRunById(runId)
   if (!run) return
@@ -559,17 +631,30 @@ async function processOneRun(deps: CoreDeps, runId: string): Promise<void> {
       await handleTroubleshooterDiagnosis(deps, run.id, outcome.output)
     }
 
-    // Designer runs (F3): parse the emitted frames + tokens and persist
-    // them as design_frames, decoding each baseline screenshot to disk for
-    // the G5 fidelity gate.
-    if (run.agentKind === 'designer') {
-      await handleDesignerOutput(deps, run.id, outcome.output)
-    }
-
-    // Frame-assigner runs: apply the frame→story assignments the agent
-    // produced, distributing the pooled project frames to build stories.
-    if (run.agentKind === 'frame-assigner') {
-      await handleFrameAssignerOutput(deps, run.id, outcome.output)
+    // Designer / frame-assigner runs (F3): the agent finished, but the real
+    // work happens here — parsing its JSON and persisting frames. If that
+    // post-hook fails we degrade the run to `failed` with the reason so the
+    // operator sees WHY instead of a silent success that produced nothing.
+    // On a malformed-output parse failure we re-queue the run ONCE with a
+    // corrective prompt before giving up.
+    if (run.agentKind === 'designer' || run.agentKind === 'frame-assigner') {
+      let hookResult: HookResult
+      try {
+        hookResult =
+          run.agentKind === 'designer'
+            ? await handleDesignerOutput(deps, run.id, outcome.output)
+            : await handleFrameAssignerOutput(deps, run.id, outcome.output)
+      } catch (err) {
+        hookResult = {
+          ok: false,
+          reason: `error al persistir el diseño: ${(err as Error).message}`,
+        }
+      }
+      if (!hookResult.ok) {
+        await handleDesignHookFailure(deps, run, hookResult)
+        return
+      }
+      logger.info({ runId: run.id, detail: hookResult.detail }, 'design: post-hook ok')
     }
 
     await safeEnqueueRunInbox(deps, {

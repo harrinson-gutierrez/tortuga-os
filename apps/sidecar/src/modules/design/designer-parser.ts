@@ -23,6 +23,7 @@ export function parseDesignerOutput(output: string): ParseDesignerResult {
   if (candidates.length === 0) {
     return { ok: false, reason: 'no fenced JSON block found in designer output' }
   }
+  let lastSchemaError: string | null = null
   for (let i = candidates.length - 1; i >= 0; i--) {
     const body = candidates[i]!.trim()
     if (!body) continue
@@ -36,9 +37,15 @@ export function parseDesignerOutput(output: string): ParseDesignerResult {
     if (validated.success) {
       return { ok: true, output: validated.data }
     }
+    lastSchemaError = validated.error.issues
+      .slice(0, 5)
+      .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
+      .join('; ')
   }
   return {
     ok: false,
-    reason: 'fenced JSON block(s) present but none matched DesignerOutput schema',
+    reason: lastSchemaError
+      ? `fenced JSON block present but failed DesignerOutput schema → ${lastSchemaError}`
+      : 'fenced JSON block(s) present but none parsed as JSON',
   }
 }

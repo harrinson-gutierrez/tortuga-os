@@ -586,6 +586,16 @@ export interface Storage {
   closeAgentRunSucceeded(args: CloseAgentRunSucceededArgs): Promise<AgentRunRow>
   /** Persists a failed/cancelled outcome without creating Evidence/WorkEntry. */
   closeAgentRunUnsuccessful(args: CloseAgentRunUnsuccessfulArgs): Promise<AgentRunRow>
+  /**
+   * Degrades an already-closed run to `failed` with a reason. Used when the
+   * agent itself succeeded but a post-run hook (parse/persist) failed, so the
+   * operator sees WHY instead of a silent success that produced nothing.
+   */
+  markAgentRunFailed(args: {
+    runId: string
+    errorMessage: string
+    now: number
+  }): Promise<AgentRunRow>
 
   getDiscoveryConversationById(id: string): Promise<DiscoveryConversationRow | null>
   getActiveDiscoveryConversationForProject(
