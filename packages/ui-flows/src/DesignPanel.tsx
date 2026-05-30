@@ -1,5 +1,5 @@
 import type { ApiClient } from '@tortuga-os/api-client'
-import type { DesignFrameDTO, StoryDTO } from '@tortuga-os/contracts'
+import type { DesignFrameDTO, DesignTokens, StoryDTO } from '@tortuga-os/contracts'
 import { Badge, Button, Card, Eyebrow, TextField } from '@tortuga-os/ui'
 import { useState } from 'react'
 import { CoworkerLiveView } from './ScaffoldPanel'
@@ -142,6 +142,7 @@ export function DesignPanel({ client, projectCode, stories }: DesignPanelProps) 
           </Badge>
           <span className="text-[10px] font-mono text-text-dim truncate">{f.figmaNodeId}</span>
         </div>
+        <TokensSummary tokens={f.tokens} />
         <div className="mt-2 flex items-center gap-2">
           <select
             className="flex-1 bg-bg border border-border rounded-md px-2 py-1 text-[12px] text-text focus:outline-none focus:border-brand"
@@ -291,5 +292,73 @@ export function DesignPanel({ client, projectCode, stories }: DesignPanelProps) 
         </div>
       </div>
     </Card>
+  )
+}
+
+/**
+ * Compact view of the tokens captured for a frame: count chips in the
+ * summary, full lists on expand. Shows the operator that the import cloned
+ * colors/typography/shadows/gradients/etc, not just the screenshot.
+ */
+function TokensSummary({ tokens }: { tokens: DesignTokens }) {
+  const counts: Array<[string, number]> = [
+    ['colores', tokens.colors?.length ?? 0],
+    ['tipografías', tokens.typography?.length ?? 0],
+    ['sombras', tokens.shadows?.length ?? 0],
+    ['gradientes', tokens.gradients?.length ?? 0],
+    ['bordes', tokens.borders?.length ?? 0],
+  ]
+  const total = counts.reduce((acc, [, n]) => acc + n, 0)
+  if (total === 0) {
+    return <div className="mt-1 text-[10px] text-text-dim">Sin tokens capturados aún</div>
+  }
+  return (
+    <details className="mt-1">
+      <summary className="cursor-pointer text-[10px] text-text-muted list-none flex flex-wrap gap-1">
+        {counts
+          .filter(([, n]) => n > 0)
+          .map(([label, n]) => (
+            <span key={label} className="rounded-sm bg-bg px-1.5 py-0.5 border border-border">
+              {n} {label}
+            </span>
+          ))}
+      </summary>
+      <div className="mt-1.5 space-y-1 text-[10px] font-mono text-text-soft">
+        {tokens.colors?.map((c) => (
+          <div key={`c:${c.name ?? ''}:${c.hex}`} className="flex items-center gap-1.5">
+            <span
+              className="inline-block w-3 h-3 rounded-sm border border-border"
+              style={{ backgroundColor: c.hex }}
+            />
+            {c.name ? `${c.name}: ` : ''}
+            {c.hex}
+            {c.opacity !== undefined && c.opacity < 1 ? ` @${Math.round(c.opacity * 100)}%` : ''}
+          </div>
+        ))}
+        {tokens.typography?.map((t) => (
+          <div key={`t:${t.name ?? ''}:${t.fontFamily ?? ''}:${t.fontSize ?? ''}`}>
+            {t.name ? `${t.name}: ` : ''}
+            {[t.fontFamily, t.fontSize && `${t.fontSize}px`, t.fontWeight]
+              .filter(Boolean)
+              .join(' ')}
+          </div>
+        ))}
+        {tokens.shadows?.map((s) => (
+          <div key={`s:${s.name ?? ''}:${s.x},${s.y},${s.blur}:${s.color}`}>
+            sombra {s.type}: {s.x},{s.y} blur {s.blur} · {s.color}
+          </div>
+        ))}
+        {tokens.gradients?.map((g) => (
+          <div key={`g:${g.name ?? ''}:${g.stops.map((st) => st.color).join(',')}`}>
+            gradiente {g.type}: {g.stops.map((st) => st.color).join(' → ')}
+          </div>
+        ))}
+        {tokens.borders?.map((b) => (
+          <div key={`b:${b.name ?? ''}:${b.width}:${b.color}`}>
+            borde: {b.width}px {b.color}
+          </div>
+        ))}
+      </div>
+    </details>
   )
 }

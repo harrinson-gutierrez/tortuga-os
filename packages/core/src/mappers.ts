@@ -37,6 +37,7 @@ import type {
   WorkEntryDTO,
 } from '@tortuga-os/contracts'
 import {
+  DesignTokens as DesignTokensSchema,
   RequiredOperatorAction as RequiredOperatorActionSchema,
   TroubleshootDiagnosis,
 } from '@tortuga-os/contracts'
@@ -388,6 +389,23 @@ export const kitTemplateDTO = (k: KitTemplateRow): KitTemplateDTO => ({
   updatedAt: k.updatedAt,
 })
 
+/**
+ * Parse tokens_json through the DesignTokens schema so the array sections
+ * (colors/gradients/typography/shadows/borders) always come back as arrays
+ * (their zod defaults), even for legacy rows or partial JSON. Falls back to
+ * a fully-defaulted empty spec on parse failure.
+ */
+function parseDesignTokens(raw: string | null | undefined): DesignTokens {
+  let parsed: unknown = {}
+  try {
+    if (raw) parsed = JSON.parse(raw)
+  } catch {
+    parsed = {}
+  }
+  const result = DesignTokensSchema.safeParse(parsed)
+  return result.success ? result.data : DesignTokensSchema.parse({})
+}
+
 export const designFrameDTO = (d: DesignFrameRow): DesignFrameDTO => ({
   id: d.id,
   projectId: d.projectId,
@@ -395,7 +413,7 @@ export const designFrameDTO = (d: DesignFrameRow): DesignFrameDTO => ({
   figmaFileKey: d.figmaFileKey,
   figmaNodeId: d.figmaNodeId,
   name: d.name,
-  tokens: parseJsonOr(d.tokensJson, {} as DesignTokens),
+  tokens: parseDesignTokens(d.tokensJson),
   baselineScreenshotPath: d.baselineScreenshotPath,
   status: d.status,
   fidelityPct: d.fidelityPct,

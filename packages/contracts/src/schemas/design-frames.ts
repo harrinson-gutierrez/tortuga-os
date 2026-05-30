@@ -5,15 +5,75 @@ export const DesignFrameStatus = z.enum(DESIGN_FRAME_STATUSES)
 export type DesignFrameStatus = z.infer<typeof DesignFrameStatus>
 
 /**
- * Design tokens extracted from a Figma frame. Free-form record so the
- * designer agent can surface whatever the design system exposes
- * (colors, typography ramps, spacing scale, radii). Persisted as JSON.
+ * Full design spec extracted from a Figma frame. The designer agent fills
+ * whatever the Figma MCP exposes (get_variable_defs + get_design_context):
+ * colors, gradients, typography, shadows/effects, borders, radii, spacing,
+ * layout, and the raw design-system variables. Every field is optional and
+ * arrays default to empty so the agent's output never fails validation for
+ * a missing section. Persisted as JSON in tokens_json.
  */
+export const ColorToken = z.object({
+  name: z.string().optional(),
+  hex: z.string(),
+  opacity: z.number().min(0).max(1).optional(),
+})
+
+export const GradientStop = z.object({ color: z.string(), position: z.number().min(0).max(1) })
+export const GradientToken = z.object({
+  name: z.string().optional(),
+  type: z.enum(['linear', 'radial', 'angular', 'diamond']).default('linear'),
+  stops: z.array(GradientStop).default([]),
+})
+
+export const TypographyToken = z.object({
+  name: z.string().optional(),
+  fontFamily: z.string().optional(),
+  fontSize: z.number().optional(),
+  fontWeight: z.union([z.number(), z.string()]).optional(),
+  lineHeight: z.union([z.number(), z.string()]).optional(),
+  letterSpacing: z.union([z.number(), z.string()]).optional(),
+})
+
+export const ShadowToken = z.object({
+  name: z.string().optional(),
+  type: z.enum(['drop', 'inner']).default('drop'),
+  x: z.number().default(0),
+  y: z.number().default(0),
+  blur: z.number().default(0),
+  spread: z.number().default(0),
+  color: z.string(),
+})
+
+export const BorderToken = z.object({
+  name: z.string().optional(),
+  width: z.number(),
+  color: z.string(),
+  style: z.enum(['solid', 'dashed', 'dotted']).optional(),
+})
+
+export const LayoutSpec = z.object({
+  width: z.number().optional(),
+  height: z.number().optional(),
+  autoLayout: z
+    .object({
+      direction: z.enum(['horizontal', 'vertical']).optional(),
+      gap: z.number().optional(),
+      padding: z.union([z.number(), z.array(z.number())]).optional(),
+    })
+    .optional(),
+})
+
 export const DesignTokens = z.object({
-  colors: z.record(z.string(), z.string()).optional(),
-  typography: z.record(z.string(), z.string()).optional(),
-  spacing: z.record(z.string(), z.number()).optional(),
+  /** Raw design-system variables/styles from get_variable_defs. */
+  variables: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
+  colors: z.array(ColorToken).default([]),
+  gradients: z.array(GradientToken).default([]),
+  typography: z.array(TypographyToken).default([]),
+  shadows: z.array(ShadowToken).default([]),
+  borders: z.array(BorderToken).default([]),
   radii: z.record(z.string(), z.number()).optional(),
+  spacing: z.record(z.string(), z.number()).optional(),
+  layout: LayoutSpec.optional(),
 })
 export type DesignTokens = z.infer<typeof DesignTokens>
 

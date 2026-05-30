@@ -92,6 +92,13 @@ Given an intent string:
   OUTPUT — single fenced JSON block, NOTHING ELSE after it
 =========================================================
 
+Before emitting, for EACH frame call the Figma MCP fully:
+- get_variable_defs → the design-system variables/styles (put them in tokens.variables).
+- get_design_context → per-layer fills, strokes, EFFECTS (drop/inner shadows),
+  gradients, typography, corner radii, borders, and the auto-layout.
+- get_screenshot → the PNG baseline.
+Capture EVERYTHING the MCP exposes. Do NOT summarize or drop shadows/gradients.
+
 End your message with EXACTLY one fenced JSON block matching:
 
 \`\`\`json
@@ -103,10 +110,25 @@ End your message with EXACTLY one fenced JSON block matching:
       "figmaNodeId": "10:20",
       "name": "Login screen",
       "tokens": {
-        "colors": { "primary": "#f44e5c" },
-        "typography": { "h1": "Inter 28/600" },
-        "spacing": { "md": 16 },
-        "radii": { "card": 12 }
+        "variables": { "color/brand": "#f44e5c", "radius/card": 12 },
+        "colors": [{ "name": "brand", "hex": "#f44e5c", "opacity": 1 }],
+        "gradients": [
+          { "name": "hero", "type": "linear",
+            "stops": [{ "color": "#f44e5c", "position": 0 }, { "color": "#ff8a5c", "position": 1 }] }
+        ],
+        "typography": [
+          { "name": "h1", "fontFamily": "Inter", "fontSize": 28, "fontWeight": 600,
+            "lineHeight": 34, "letterSpacing": -0.5 }
+        ],
+        "shadows": [
+          { "name": "card", "type": "drop", "x": 0, "y": 4, "blur": 12, "spread": 0,
+            "color": "rgba(0,0,0,0.12)" }
+        ],
+        "borders": [{ "name": "input", "width": 1, "color": "#e0e0e0", "style": "solid" }],
+        "radii": { "card": 12, "button": 8 },
+        "spacing": { "md": 16, "lg": 24 },
+        "layout": { "width": 390, "height": 844,
+          "autoLayout": { "direction": "vertical", "gap": 16, "padding": [24, 16, 24, 16] } }
       },
       "screenshotBase64": "<base64 PNG of the frame, no data: prefix>"
     }
@@ -116,9 +138,13 @@ End your message with EXACTLY one fenced JSON block matching:
 
 Rules:
 - At least one frame. Every frame MUST have figmaFileKey, figmaNodeId, name.
+- tokens: fill every section the frame actually has — colors, gradients,
+  typography, shadows, borders, radii, spacing, layout, variables. Empty
+  arrays are fine for sections the frame genuinely lacks, but NEVER omit a
+  shadow/gradient that exists in the design.
 - screenshotBase64 is the fidelity baseline — include it whenever the MCP
   can export the frame. Omit only if the export genuinely failed.
-- Concrete token values, not references. No vague language.`,
+- Concrete values (hex, px, weights), not references. No vague language.`,
 
   'frame-assigner': `=========================================================
   HEADLESS FRAME ASSIGNER — MATCH FIGMA FRAMES TO BUILD STORIES

@@ -64,6 +64,26 @@ async function buildUserPrompt(taskId: string, extraPrompt: string | undefined):
       lines.push('## ARCHITECTURE.md (fuente de verdad — síguelo)')
       lines.push(archContent)
     }
+
+    // Inject the design spec of the Figma frame assigned to this story so
+    // the dev implements pixel-faithful (the G5 gate diffs against the same
+    // baseline). Tokens carry colors/typography/shadows/gradients/etc.
+    const frames = await deps.storage.listDesignFramesForStory(story.id)
+    const frame = frames.find((f) => f.baselineScreenshotPath) ?? frames[0]
+    if (frame) {
+      lines.push('')
+      lines.push('## Diseño Figma de esta story (implementa pixel-perfect)')
+      lines.push(`Frame: ${frame.name} (Figma node ${frame.figmaNodeId})`)
+      lines.push('Tokens (colores, tipografía, sombras, gradientes, bordes, layout):')
+      lines.push('```json')
+      lines.push(frame.tokensJson)
+      lines.push('```')
+      if (frame.baselineScreenshotPath) {
+        lines.push(
+          `Baseline screenshot: ${frame.baselineScreenshotPath} (el gate G5 compara contra esto).`,
+        )
+      }
+    }
   }
 
   lines.push('')
