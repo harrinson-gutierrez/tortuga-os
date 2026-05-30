@@ -39,12 +39,19 @@ async function resolveProjectDesignTask(
     const created = await useCases.stories.createStory(deps, {
       quoteId: quote.id,
       code: storyCode,
-      title: 'Diseño del proyecto',
-      goal: 'Definir el diseño visual completo del proyecto en Figma (todas las pantallas) antes de arquitectura. Cada frame se reparte a su story de build.',
+      title: 'Diseño del proyecto (Figma)',
+      goal: 'Primera tarea del proyecto: producir el diseño visual completo en Figma —todas las pantallas— ANTES de arquitectura. Importas un Figma existente o lo generas desde la descripción del producto. Los frames quedan como la verdad visual contra la que se programa y se mide fidelidad pixel a pixel.',
       ownerRole: 'designer',
+      // priority 0 keeps design strictly before the -000 architecture story
+      // (which is priority 1); both share the -000 prefix so the code-asc
+      // tiebreaker alone would otherwise put architecture first.
       estimatedHoursMin: 0,
-      priority: 1,
-      acceptanceCriteriaJson: '[]',
+      priority: 0,
+      acceptanceCriteriaJson: JSON.stringify([
+        'El diseño de todas las pantallas existe en Figma (importado o generado).',
+        'Cada frame está asignado a su historia de build (auto por el repartidor o manual).',
+        'El operador aprobó el diseño antes de pasar a arquitectura.',
+      ]),
       inputsJson: '{}',
       outputsJson: '{}',
       verificationJson: '{}',

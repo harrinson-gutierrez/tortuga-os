@@ -2,6 +2,7 @@ import type { ApiClient } from '@tortuga-os/api-client'
 import type { DesignFrameDTO, StoryDTO } from '@tortuga-os/contracts'
 import { Badge, Button, Card, Eyebrow, TextField } from '@tortuga-os/ui'
 import { useState } from 'react'
+import { CoworkerLiveView } from './ScaffoldPanel'
 import { useAsyncData } from './useAsyncData'
 
 export interface DesignPanelProps {
@@ -38,12 +39,23 @@ export function DesignPanel({ client, projectCode, stories }: DesignPanelProps) 
   const [intent, setIntent] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
+  const [activeRunId, setActiveRunId] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
   const { data: frames } = useAsyncData(
     () => client.designFrames.listForProject(projectCode),
     [client, projectCode, refreshKey],
+  )
+
+  // Pre-flight: the designer can only read/write Figma through the project's
+  // Figma MCP. If it isn't installed + enabled, the run would fail silently,
+  // so we block import/generate and point the operator to the MCP panel.
+  const { data: mcps } = useAsyncData(
+    () => client.projectMcps.listForProject(projectCode),
+    [client, projectCode, refreshKey],
+  )
+  const figmaReady = (mcps ?? []).some(
+    (m) => m.enabled && (m.presetId === 'figma' || m.name === 'figma'),
   )
 
   const buildStories = stories.filter((s) => isBuildStory(s.code))
@@ -58,11 +70,10 @@ export function DesignPanel({ client, projectCode, stories }: DesignPanelProps) 
     }
     setBusy(true)
     setError(null)
-    setNotice(null)
     try {
-      await client.designFrames.import({ projectCode, figmaUrl: figmaUrl.trim() })
+      const { runId } = await client.designFrames.import({ projectCode, figmaUrl: figmaUrl.trim() })
       setFigmaUrl('')
-      setNotice('Import encolado. El designer extrae los frames y el repartidor los asigna solo.')
+      setActiveRunId(runId)
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -77,11 +88,10 @@ export function DesignPanel({ client, projectCode, stories }: DesignPanelProps) 
     }
     setBusy(true)
     setError(null)
-    setNotice(null)
     try {
-      await client.designFrames.generate({ projectCode, intent: intent.trim() })
+      const { runId } = await client.designFrames.generate({ projectCode, intent: intent.trim() })
       setIntent('')
-      setNotice('Generación encolada. El designer crea el diseño en Figma y lo reparte.')
+      setActiveRunId(runId)
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -162,11 +172,36 @@ export function DesignPanel({ client, projectCode, stories }: DesignPanelProps) 
           Diseño del proyecto (F3) — Figma
         </h3>
         <div className="text-[12px] text-text-muted mt-1">
-          Importa el Figma del proyecto entero o genéralo desde una descripción. El repartidor
-          asigna cada frame a su historia; el gate de fidelidad compara pixel a pixel contra el
-          frame.
+          Primera tarea del proyecto, antes de arquitectura. Importa el Figma del proyecto entero o
+          genéralo desde una descripción: el agente diseñador trae cada pantalla, el repartidor la
+          asigna a su historia, y al programar el gate de fidelidad compara pixel a pixel contra ese
+          diseño.
         </div>
       </div>
+
+      {mcps && !figmaReady && (
+        <div className="mt-3 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-[12px] text-text">
+          Falta el <span className="font-medium">MCP de Figma</span> en este proyecto. Sin él, el
+          agente no puede leer ni crear en Figma. Instálalo en la pestaña{' '}
+          <span className="font-medium">Conexiones MCP</span> y vuelve aquí.
+        </div>
+      )}
+
+      {activeRunId && (
+        <div className="mt-4">
+          <Eyebrow>Agente diseñador trabajando…</Eyebrow>
+          <div className="mt-2">
+            <CoworkerLiveView
+              client={client}
+              runId={activeRunId}
+              onFinished={() => {
+                setActiveRunId(null)
+                setRefreshKey((k) => k + 1)
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         <div className="rounded-md border border-border bg-bg/30 p-3">
@@ -177,11 +212,16 @@ export function DesignPanel({ client, projectCode, stories }: DesignPanelProps) 
               placeholder="https://figma.com/design/KEY/... (todo el archivo)"
               value={figmaUrl}
               onChange={(e) => setFigmaUrl(e.target.value)}
-              disabled={busy}
+              disabled={busy || !figmaReady || !!activeRunId}
             />
           </div>
           <div className="mt-2 flex justify-end">
-            <Button size="sm" variant="turtle" onClick={runImport} disabled={busy}>
+            <Button
+              size="sm"
+              variant="turtle"
+              onClick={runImport}
+              disabled={busy || !figmaReady || !!activeRunId}
+            >
               {busy ? '…' : 'Importar'}
             </Button>
           </div>
@@ -195,11 +235,16 @@ export function DesignPanel({ client, projectCode, stories }: DesignPanelProps) 
               placeholder="App de gestión de flota: login, dashboard, detalle de vehículo, perfil. Branding Tuurt."
               value={intent}
               onChange={(e) => setIntent(e.target.value)}
-              disabled={busy}
+              disabled={busy || !figmaReady || !!activeRunId}
             />
           </div>
           <div className="mt-2 flex justify-end">
-            <Button size="sm" variant="turtle" onClick={runGenerate} disabled={busy}>
+            <Button
+              size="sm"
+              variant="turtle"
+              onClick={runGenerate}
+              disabled={busy || !figmaReady || !!activeRunId}
+            >
               {busy ? '…' : 'Generar'}
             </Button>
           </div>
@@ -207,7 +252,6 @@ export function DesignPanel({ client, projectCode, stories }: DesignPanelProps) 
       </div>
 
       {error && <div className="mt-2 text-[12px] text-danger">{error}</div>}
-      {notice && <div className="mt-2 text-[12px] text-text-muted">{notice}</div>}
 
       <div className="mt-5 border-t border-border pt-3">
         <div className="flex items-center justify-between">
