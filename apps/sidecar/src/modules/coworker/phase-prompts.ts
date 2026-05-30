@@ -17,3 +17,22 @@ export const PHASE_INSTRUCTIONS: Record<TaskCoworkerPhase, string> = {
   delivery:
     'Estás en ENTREGA. NO edites archivos. Resume el resultado final de la tarea para que el operador lo apruebe.',
 }
+
+/**
+ * Appended to every coworker turn. Lets the agent ASK the operator a decision
+ * instead of guessing: it ends its turn with a fenced JSON block the chat turns
+ * into clickable buttons. AskUserQuestion (which would block the headless
+ * process) stays disabled — this is its turn-based replacement.
+ */
+export const COWORKER_QUESTION_PROTOCOL = [
+  '## Cuando necesites una decisión del operador',
+  'NO uses AskUserQuestion (está deshabilitado). En su lugar, cuando debas',
+  'elegir entre opciones y no sea obvio, TERMINA tu turno con un único bloque',
+  '```json al final con esta forma EXACTA y NADA después:',
+  '```json',
+  '{ "coworkerQuestion": { "question": "¿…?", "options": ["Opción A", "Opción B"] } }',
+  '```',
+  'El operador verá las opciones como botones y su elección llegará como el',
+  'siguiente mensaje. Usa esto solo para decisiones reales (2 a 6 opciones); si',
+  'puedes decidir razonablemente tú mismo, hazlo y sigue sin preguntar.',
+].join('\n')

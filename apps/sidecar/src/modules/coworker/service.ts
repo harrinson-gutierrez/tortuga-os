@@ -12,7 +12,7 @@ import type { AgentRunRow, TaskRow } from '@tortuga-os/core'
 import { coreDeps, unwrap } from '../../shared/core-deps'
 import { logger } from '../../shared/logger'
 import { buildUserPrompt } from '../agent-runs/build-prompt'
-import { PHASE_INSTRUCTIONS } from './phase-prompts'
+import { COWORKER_QUESTION_PROTOCOL, PHASE_INSTRUCTIONS } from './phase-prompts'
 
 // Tight poll so the SSE delta stream feels live (the worker writes output
 // chunks to the DB as the CLI emits them; we relay them to the chat).
@@ -84,7 +84,7 @@ async function startTurn(
   const history = await deps.storage.listTaskMessages(conversationId)
   const brief = await buildUserPrompt(task.id, undefined)
   const transcript = serializeTaskTranscript(history)
-  const userPrompt = [brief, transcript, PHASE_INSTRUCTIONS[conv.phase]]
+  const userPrompt = [brief, transcript, PHASE_INSTRUCTIONS[conv.phase], COWORKER_QUESTION_PROTOCOL]
     .filter((s) => s.trim().length > 0)
     .join('\n\n')
 

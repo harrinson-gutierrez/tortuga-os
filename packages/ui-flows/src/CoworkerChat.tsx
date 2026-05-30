@@ -7,7 +7,7 @@ import type {
   TaskCoworkerPhase,
   TaskMessageDTO,
 } from '@tortuga-os/contracts'
-import { TASK_COWORKER_PHASES } from '@tortuga-os/contracts'
+import { TASK_COWORKER_PHASES, parseCoworkerQuestion } from '@tortuga-os/contracts'
 import { Badge, Button, Card, Eyebrow } from '@tortuga-os/ui'
 import { useEffect, useRef, useState } from 'react'
 import type { ProjectStack } from './TaskDetail'
@@ -152,9 +152,9 @@ export function CoworkerChat({ client, taskId, stack, onModeSwitch }: CoworkerCh
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [localMessages?.length, sending, streamingText.length])
 
-  async function send() {
-    if (!input.trim() || !localConv) return
-    const content = input.trim()
+  async function send(override?: string) {
+    const content = (override ?? input).trim()
+    if (!content || !localConv) return
     setSending(true)
     setStreamingText('')
     setError(null)
@@ -292,7 +292,16 @@ export function CoworkerChat({ client, taskId, stack, onModeSwitch }: CoworkerCh
             m.agentRunId !== null &&
             m.content.trim() === ''
           if (isLivePlaceholder) return null
-          return <CoworkerMessage key={m.id} message={m} client={client} />
+          return (
+            <CoworkerMessage
+              key={m.id}
+              message={m}
+              client={client}
+              isLast={i === messages.length - 1}
+              onAnswer={(opt) => void send(opt)}
+              answering={sending}
+            />
+          )
         })}
         {(sending || reattaching) && <StreamingRun text={streamingText} />}
       </div>
@@ -313,7 +322,7 @@ export function CoworkerChat({ client, taskId, stack, onModeSwitch }: CoworkerCh
             }}
             disabled={sending}
           />
-          <Button variant="turtle" onClick={send} disabled={sending || !input.trim()}>
+          <Button variant="turtle" onClick={() => void send()} disabled={sending || !input.trim()}>
             {sending ? '…' : '▶ Enviar'}
           </Button>
         </div>
@@ -339,7 +348,19 @@ export function CoworkerChat({ client, taskId, stack, onModeSwitch }: CoworkerCh
   )
 }
 
-function CoworkerMessage({ message, client }: { message: TaskMessageDTO; client: ApiClient }) {
+function CoworkerMessage({
+  message,
+  client,
+  isLast,
+  onAnswer,
+  answering,
+}: {
+  message: TaskMessageDTO
+  client: ApiClient
+  isLast: boolean
+  onAnswer: (option: string) => void
+  answering: boolean
+}) {
   if (message.role === 'user') {
     return (
       <div className="flex justify-end">
@@ -349,13 +370,55 @@ function CoworkerMessage({ message, client }: { message: TaskMessageDTO; client:
       </div>
     )
   }
+  // Only the latest agent turn's question is answerable (older ones are
+  // already resolved by whatever was sent next).
+  const question = isLast ? parseCoworkerQuestion(message.content) : null
   if (message.agentRunId) {
-    return <AgentRunMessage runId={message.agentRunId} fallback={message.content} client={client} />
+    return (
+      <div className="space-y-2">
+        <AgentRunMessage runId={message.agentRunId} fallback={message.content} client={client} />
+        {question && <QuestionButtons q={question} onAnswer={onAnswer} answering={answering} />}
+      </div>
+    )
   }
   return (
-    <div className="flex justify-start">
-      <div className="max-w-[80%] rounded-md px-3 py-2 text-[13px] leading-snug whitespace-pre-wrap bg-bg-alt text-text border border-border">
-        {message.content}
+    <div className="space-y-2">
+      <div className="flex justify-start">
+        <div className="max-w-[80%] rounded-md px-3 py-2 text-[13px] leading-snug whitespace-pre-wrap bg-bg-alt text-text border border-border">
+          {message.content}
+        </div>
+      </div>
+      {question && <QuestionButtons q={question} onAnswer={onAnswer} answering={answering} />}
+    </div>
+  )
+}
+
+/** Render a coworker question as clickable option buttons. Picking one sends it
+ * as the next turn. */
+function QuestionButtons({
+  q,
+  onAnswer,
+  answering,
+}: {
+  q: { question: string; options: string[] }
+  onAnswer: (option: string) => void
+  answering: boolean
+}) {
+  return (
+    <div className="rounded-md border border-brand/40 bg-brand/5 p-3">
+      <div className="text-[13px] text-text font-medium">{q.question}</div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {q.options.map((opt) => (
+          <Button
+            key={opt}
+            size="sm"
+            variant="turtle"
+            onClick={() => onAnswer(opt)}
+            disabled={answering}
+          >
+            {opt}
+          </Button>
+        ))}
       </div>
     </div>
   )
