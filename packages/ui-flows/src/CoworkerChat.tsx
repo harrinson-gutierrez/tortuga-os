@@ -112,6 +112,41 @@ export function CoworkerChat({ client, taskId, stack, onModeSwitch }: CoworkerCh
     }
   }, [localConv, localMessages, sending, reattaching, client])
 
+  // Refresh the conversation whenever the operator comes back to the window or
+  // tab — a turn that finished while they were away (the worker persists it
+  // regardless) shows its result instead of a stale "en vivo". Also runs on a
+  // slow interval as a backstop so a foreground turn finishing under a dropped
+  // SSE still lands.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refresh reads latest ids via closure-free load
+  useEffect(() => {
+    if (!localConv) return
+    const convId = localConv.id
+    let alive = true
+    async function refresh() {
+      if (!alive || sending) return
+      try {
+        const fresh = await client.coworker.load(convId)
+        if (!alive) return
+        setLocalMessages(fresh.messages)
+        setLocalConv(fresh.conversation)
+      } catch {
+        /* transient — keep current view */
+      }
+    }
+    function onVisible() {
+      if (document.visibilityState === 'visible') void refresh()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    const interval = setInterval(refresh, 5000)
+    return () => {
+      alive = false
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+      clearInterval(interval)
+    }
+  }, [localConv, sending, client])
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: auto-scroll only on tracked count changes
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
