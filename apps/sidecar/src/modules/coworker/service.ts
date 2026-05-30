@@ -14,7 +14,9 @@ import { logger } from '../../shared/logger'
 import { buildUserPrompt } from '../agent-runs/build-prompt'
 import { PHASE_INSTRUCTIONS } from './phase-prompts'
 
-const RUN_POLL_INTERVAL_MS = 1500
+// Tight poll so the SSE delta stream feels live (the worker writes output
+// chunks to the DB as the CLI emits them; we relay them to the chat).
+const RUN_POLL_INTERVAL_MS = 500
 const RUN_TIMEOUT_MS = 30 * 60_000
 const TERMINAL_STATUSES: ReadonlySet<AgentRunRow['status']> = new Set([
   'succeeded',
@@ -104,8 +106,12 @@ export async function streamUserMessage(
   onEvent({ type: 'user-saved', message: userMessage })
 
   try {
+    let queuedSeen = false
     const run = await runTurn(conversationId, (chunk, runId) => {
-      onEvent({ type: 'run-queued', runId })
+      if (!queuedSeen) {
+        queuedSeen = true
+        onEvent({ type: 'run-queued', runId })
+      }
       if (chunk) onEvent({ type: 'delta', text: chunk })
     })
     const agentMessage = await appendAgentTurn(conversationId, run)

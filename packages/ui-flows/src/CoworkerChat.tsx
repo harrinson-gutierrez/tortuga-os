@@ -323,18 +323,39 @@ function AgentRunMessage({
   )
 }
 
+/** Last meaningful line the agent emitted — a tool marker or prose — shown as
+ * a one-line "currently doing" hint above the full transcript. */
+function lastActivity(text: string): string | null {
+  const lines = text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const l = lines[i]!
+    const tool = l.match(/^\[tool:(\w+)\s+(OK|FAILED)\]\s*(.*)$/)
+    if (tool) {
+      const [, name, status, target] = tool
+      const verb = status === 'OK' ? '' : ' (falló)'
+      return `${name}${verb}${target ? `: ${target.slice(0, 80)}` : ''}`
+    }
+    if (l.length > 3) return l.slice(0, 100)
+  }
+  return null
+}
+
 function StreamingRun({ text }: { text: string }) {
+  const activity = text.trim().length === 0 ? null : lastActivity(text)
   return (
-    <div className="rounded-md border border-border bg-bg-alt p-3">
+    <div className="rounded-md border border-brand/40 bg-bg-alt p-3">
       <div className="flex items-center gap-2 text-[11px] font-mono text-text-muted mb-2">
         <span>Agente</span>
         <Badge tone="brand" outline>
           en vivo
         </Badge>
+        <span className="text-brand animate-pulse">●</span>
+        <span className="text-text-soft truncate">{activity ?? 'Arrancando agente…'}</span>
       </div>
-      {text.trim().length === 0 ? (
-        <div className="text-[12px] text-text-muted italic">El agente está trabajando…</div>
-      ) : (
+      {text.trim().length > 0 && (
         <pre className="text-[12px] font-mono whitespace-pre-wrap text-text-soft max-h-[420px] overflow-y-auto m-0">
           {text}
           <span className="animate-pulse text-brand">▌</span>
