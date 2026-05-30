@@ -69,7 +69,48 @@ export function CoworkerChat({ client, taskId, stack, onModeSwitch }: CoworkerCh
   const [streamingText, setStreamingText] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [advancing, setAdvancing] = useState(false)
+  const [reattaching, setReattaching] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Reattach to a turn that's still running in the background (operator sent a
+  // turn, navigated away, came back). An agent message with an empty body +
+  // an agentRunId is an unfinished placeholder: poll its run until it lands,
+  // then reload the conversation so its content fills in.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: guarded by reattaching/sending flags
+  useEffect(() => {
+    if (!localConv || !localMessages || sending || reattaching) return
+    const last = localMessages[localMessages.length - 1]
+    if (!last || last.role !== 'agent' || last.agentRunId === null || last.content.trim() !== '')
+      return
+    setReattaching(true)
+    const runId = last.agentRunId
+    const convId = localConv.id
+    let alive = true
+    ;(async () => {
+      try {
+        for (let i = 0; i < 1200 && alive; i++) {
+          const run = await client.agentRuns.get(runId)
+          if (run.output) setStreamingText(run.output)
+          if (run.status === 'succeeded' || run.status === 'failed' || run.status === 'cancelled') {
+            const fresh = await client.coworker.load(convId)
+            if (!alive) return
+            setLocalMessages(fresh.messages)
+            setLocalConv(fresh.conversation)
+            setStreamingText('')
+            break
+          }
+          await new Promise((r) => setTimeout(r, 1000))
+        }
+      } catch {
+        /* run vanished or network blip — leave the placeholder as-is */
+      } finally {
+        if (alive) setReattaching(false)
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [localConv, localMessages, sending, reattaching, client])
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: auto-scroll only on tracked count changes
   useEffect(() => {
@@ -98,7 +139,6 @@ export function CoworkerChat({ client, taskId, stack, onModeSwitch }: CoworkerCh
       updatedAt: Date.now(),
     }
     setLocalMessages((prev) => [...(prev ?? []), optimistic])
-    let doneSeen = false
     try {
       await client.coworker.sendMessageStream(localConv.id, content, {
         onUserSaved: (m) => {
@@ -110,23 +150,19 @@ export function CoworkerChat({ client, taskId, stack, onModeSwitch }: CoworkerCh
         onDelta: (text) => {
           setStreamingText((prev) => prev + text)
         },
-        onDone: (agentMessage) => {
-          doneSeen = true
-          setStreamingText('')
-          setLocalMessages((prev) => [...(prev ?? []), agentMessage])
-        },
+        onDone: () => {},
         onError: (msg) => {
           setError(msg)
         },
       })
-      // The Hono/Node SSE adapter sometimes buffers the final chunk: if we
-      // never saw `done`, reconcile from disk.
-      if (!doneSeen) {
-        const fresh = await client.coworker.load(localConv.id)
-        setLocalMessages(fresh.messages)
-        setLocalConv(fresh.conversation)
-        setStreamingText('')
-      }
+      // The backend persists the turn (placeholder + worker post-hook), so the
+      // conversation on disk is the source of truth — reload it whether or not
+      // the SSE delivered `done` (the Hono/Node adapter sometimes buffers the
+      // final chunk, and the turn may even finish after this connection drops).
+      const fresh = await client.coworker.load(localConv.id)
+      setLocalMessages(fresh.messages)
+      setLocalConv(fresh.conversation)
+      setStreamingText('')
     } catch (e) {
       setError((e as Error).message)
       setLocalMessages((prev) => (prev ?? []).filter((m) => m.id !== optimistic.id))
@@ -212,10 +248,18 @@ export function CoworkerChat({ client, taskId, stack, onModeSwitch }: CoworkerCh
             <em>"Implementa la pantalla de login según la story"</em>.
           </div>
         )}
-        {messages.map((m) => (
-          <CoworkerMessage key={m.id} message={m} client={client} />
-        ))}
-        {sending && <StreamingRun text={streamingText} />}
+        {messages.map((m, i) => {
+          // The trailing empty agent placeholder is rendered as the live run
+          // (below) instead of an empty bubble.
+          const isLivePlaceholder =
+            i === messages.length - 1 &&
+            m.role === 'agent' &&
+            m.agentRunId !== null &&
+            m.content.trim() === ''
+          if (isLivePlaceholder) return null
+          return <CoworkerMessage key={m.id} message={m} client={client} />
+        })}
+        {(sending || reattaching) && <StreamingRun text={streamingText} />}
       </div>
 
       {error && <div className="mt-3 text-[12px] text-danger">{error}</div>}

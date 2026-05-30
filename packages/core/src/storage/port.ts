@@ -670,6 +670,18 @@ export interface Storage {
     costCents?: number
     now: number
   }): Promise<TaskMessageRow>
+  /** Find the message that owns a given agent run (the coworker turn placeholder). */
+  getTaskMessageByAgentRunId(agentRunId: string): Promise<TaskMessageRow | null>
+  /** Complete an agent-turn placeholder once its run finishes (worker post-hook). */
+  updateTaskMessage(args: {
+    id: string
+    content?: string
+    model?: string | null
+    tokensIn?: number
+    tokensOut?: number
+    costCents?: number
+    now: number
+  }): Promise<TaskMessageRow>
   setTaskConversationPhase(args: {
     id: string
     phase: TaskCoworkerPhase

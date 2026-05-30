@@ -1306,6 +1306,27 @@ export function createSqliteStorage(db: Db): Storage {
       return row as TaskMessageRow
     },
 
+    async getTaskMessageByAgentRunId(agentRunId) {
+      const row = await db
+        .select()
+        .from(taskMessages)
+        .where(eq(taskMessages.agentRunId, agentRunId))
+        .get()
+      return (row as TaskMessageRow | undefined) ?? null
+    },
+
+    async updateTaskMessage(args) {
+      const set: Record<string, unknown> = { updatedAt: args.now }
+      if (args.content !== undefined) set.content = args.content
+      if (args.model !== undefined) set.model = args.model
+      if (args.tokensIn !== undefined) set.tokensIn = args.tokensIn
+      if (args.tokensOut !== undefined) set.tokensOut = args.tokensOut
+      if (args.costCents !== undefined) set.costCents = args.costCents
+      await db.update(taskMessages).set(set).where(eq(taskMessages.id, args.id)).run()
+      const row = await db.select().from(taskMessages).where(eq(taskMessages.id, args.id)).get()
+      return row as TaskMessageRow
+    },
+
     async setTaskConversationPhase(args) {
       await db
         .update(taskConversations)

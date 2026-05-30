@@ -12,6 +12,7 @@ import type { AgentRunRow, CoreDeps } from '@tortuga-os/core'
 import { useCases } from '@tortuga-os/core'
 import { coreDeps } from '../../shared/core-deps'
 import { logger } from '../../shared/logger'
+import { completeCoworkerTurn } from '../coworker/service'
 import { type HookResult, handleDesignerOutput } from '../design/designer-output'
 import { handleFrameAssignerOutput } from '../design/frame-assigner'
 import { renderSkillsBlock, resolveSkillsForRun, skillsRootPath } from '../skills/use-cases'
@@ -715,6 +716,13 @@ async function processOneRun(deps: CoreDeps, runId: string): Promise<void> {
       logger.info({ runId: run.id, detail: hookResult.detail }, 'design: post-hook ok')
     }
 
+    // Coworker turns: fill the agent placeholder message now that the run is
+    // done, independent of any live SSE connection (the turn survives the
+    // operator navigating away). No-ops for non-coworker runs.
+    await completeCoworkerTurn(run.id).catch((err) =>
+      logger.warn({ runId: run.id, err: (err as Error).message }, 'coworker: complete turn failed'),
+    )
+
     await safeEnqueueRunInbox(deps, {
       kind: 'agent_run_succeeded',
       title: `Agent ${run.agentKind} terminó OK`,
@@ -738,6 +746,11 @@ async function processOneRun(deps: CoreDeps, runId: string): Promise<void> {
     closedAt,
   })
   logger.warn({ runId: run.id, kind: outcome.kind }, 'agent-run: closed unsuccessful')
+  // A failed/cancelled coworker turn must still complete its placeholder so the
+  // chat shows what happened instead of an eternal "working…".
+  await completeCoworkerTurn(run.id).catch((err) =>
+    logger.warn({ runId: run.id, err: (err as Error).message }, 'coworker: complete turn failed'),
+  )
   if (outcome.kind === 'failed') {
     await safeEnqueueRunInbox(deps, {
       kind: 'agent_run_failed',

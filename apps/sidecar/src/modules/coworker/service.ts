@@ -55,86 +55,31 @@ export type CoworkerStreamEvent =
   | { type: 'done'; agentMessage: TaskMessageDTO; runId: string }
   | { type: 'error'; message: string }
 
-export async function sendUserMessage(
+/**
+ * Start a coworker turn: persist the user message, create an EMPTY agent
+ * placeholder bound to a freshly-queued run, and return immediately. The run
+ * executes in the background worker; its post-hook (worker.ts) fills the
+ * placeholder when it finishes — so the turn survives the operator navigating
+ * away or closing the app. Nothing here waits for the run.
+ */
+async function startTurn(
   conversationId: string,
   content: string,
 ): Promise<{ userMessage: TaskMessageDTO; agentMessage: TaskMessageDTO; runId: string }> {
   const deps = coreDeps()
   const conv = await deps.storage.getTaskConversationById(conversationId)
   if (!conv) throw new Error(`task conversation ${conversationId} not found`)
-
-  const userRow = await deps.storage.appendTaskMessage({
-    id: deps.newId(),
-    conversationId,
-    role: 'user',
-    content,
-    phase: conv.phase,
-    now: deps.now(),
-  })
-  const userMessage = unwrap(
-    await useCases.coworker.getConversationWithMessages(deps, conversationId),
-  ).messages.find((m) => m.id === userRow.id)!
-
-  const run = await runTurn(conversationId)
-  const agentMessage = await appendAgentTurn(conversationId, run)
-  return { userMessage, agentMessage, runId: run.id }
-}
-
-export async function streamUserMessage(
-  conversationId: string,
-  content: string,
-  onEvent: (ev: CoworkerStreamEvent) => void,
-): Promise<void> {
-  const deps = coreDeps()
-  const conv = await deps.storage.getTaskConversationById(conversationId)
-  if (!conv) {
-    onEvent({ type: 'error', message: `task conversation ${conversationId} not found` })
-    return
-  }
-
-  const userRow = await deps.storage.appendTaskMessage({
-    id: deps.newId(),
-    conversationId,
-    role: 'user',
-    content,
-    phase: conv.phase,
-    now: deps.now(),
-  })
-  const userMessage = unwrap(
-    await useCases.coworker.getConversationWithMessages(deps, conversationId),
-  ).messages.find((m) => m.id === userRow.id)!
-  onEvent({ type: 'user-saved', message: userMessage })
-
-  try {
-    let queuedSeen = false
-    const run = await runTurn(conversationId, (chunk, runId) => {
-      if (!queuedSeen) {
-        queuedSeen = true
-        onEvent({ type: 'run-queued', runId })
-      }
-      if (chunk) onEvent({ type: 'delta', text: chunk })
-    })
-    const agentMessage = await appendAgentTurn(conversationId, run)
-    onEvent({ type: 'done', agentMessage, runId: run.id })
-  } catch (err) {
-    onEvent({ type: 'error', message: (err as Error).message })
-  }
-}
-
-/**
- * Build the turn prompt, queue a real agent run in the workspace (so files
- * persist on disk), and wait for it to reach a terminal state. The optional
- * onProgress callback tails the run output for the SSE variant.
- */
-async function runTurn(
-  conversationId: string,
-  onProgress?: (chunk: string, runId: string) => void,
-): Promise<AgentRunRow> {
-  const deps = coreDeps()
-  const conv = await deps.storage.getTaskConversationById(conversationId)
-  if (!conv) throw new Error(`task conversation ${conversationId} not found`)
   const task = await deps.storage.getTaskById(conv.taskId)
   if (!task) throw new Error(`task ${conv.taskId} not found`)
+
+  const userRow = await deps.storage.appendTaskMessage({
+    id: deps.newId(),
+    conversationId,
+    role: 'user',
+    content,
+    phase: conv.phase,
+    now: deps.now(),
+  })
 
   const history = await deps.storage.listTaskMessages(conversationId)
   const brief = await buildUserPrompt(task.id, undefined)
@@ -144,21 +89,72 @@ async function runTurn(
     .join('\n\n')
 
   const agentKind = await devAgentKindForTask(task)
-  const systemPrompt = systemPromptFor(agentKind)
-
   const queued = unwrap(
     await useCases.agentRuns.queueAgentRun(deps, {
       taskId: task.id,
       agentKind,
       provider: 'claude-cli',
-      systemPrompt,
+      systemPrompt: systemPromptFor(agentKind),
       userPrompt,
     }),
   )
-  onProgress?.('', queued.id)
-  logger.info({ conversationId, runId: queued.id, phase: conv.phase }, 'coworker: queued turn run')
 
-  return waitForRun(queued.id, onProgress)
+  const agentRow = await deps.storage.appendTaskMessage({
+    id: deps.newId(),
+    conversationId,
+    role: 'agent',
+    content: '',
+    agentRunId: queued.id,
+    phase: conv.phase,
+    now: deps.now(),
+  })
+
+  logger.info({ conversationId, runId: queued.id, phase: conv.phase }, 'coworker: queued turn run')
+  const reload = unwrap(await useCases.coworker.getConversationWithMessages(deps, conversationId))
+  return {
+    userMessage: reload.messages.find((m) => m.id === userRow.id)!,
+    agentMessage: reload.messages.find((m) => m.id === agentRow.id)!,
+    runId: queued.id,
+  }
+}
+
+export async function sendUserMessage(
+  conversationId: string,
+  content: string,
+): Promise<{ userMessage: TaskMessageDTO; agentMessage: TaskMessageDTO; runId: string }> {
+  const { userMessage, runId } = await startTurn(conversationId, content)
+  const run = await waitForRun(runId)
+  const agentMessage = await finalizeAgentTurn(runId, run)
+  return { userMessage, agentMessage, runId }
+}
+
+export async function streamUserMessage(
+  conversationId: string,
+  content: string,
+  onEvent: (ev: CoworkerStreamEvent) => void,
+): Promise<void> {
+  let started: Awaited<ReturnType<typeof startTurn>>
+  try {
+    started = await startTurn(conversationId, content)
+  } catch (err) {
+    onEvent({ type: 'error', message: (err as Error).message })
+    return
+  }
+  onEvent({ type: 'user-saved', message: started.userMessage })
+  onEvent({ type: 'run-queued', runId: started.runId })
+
+  // The run is already executing in the worker; we only tail it for the live
+  // view. If this SSE connection drops, the worker post-hook still completes
+  // the placeholder — the turn never gets lost.
+  try {
+    const run = await waitForRun(started.runId, (chunk) => {
+      if (chunk) onEvent({ type: 'delta', text: chunk })
+    })
+    const agentMessage = await finalizeAgentTurn(started.runId, run)
+    onEvent({ type: 'done', agentMessage, runId: started.runId })
+  } catch (err) {
+    onEvent({ type: 'error', message: (err as Error).message })
+  }
 }
 
 async function waitForRun(
@@ -181,22 +177,24 @@ async function waitForRun(
   throw new Error(`agent run ${runId} timed out after ${RUN_TIMEOUT_MS}ms`)
 }
 
-async function appendAgentTurn(conversationId: string, run: AgentRunRow): Promise<TaskMessageDTO> {
+/**
+ * Fill the agent placeholder message for a finished run with its output +
+ * metrics. Idempotent and owned by both the SSE tail and the worker post-hook
+ * (completeCoworkerTurn) — whichever observes the terminal run first wins; the
+ * other no-ops because the content already matches.
+ */
+export async function finalizeAgentTurn(runId: string, run: AgentRunRow): Promise<TaskMessageDTO> {
   const deps = coreDeps()
-  const conv = await deps.storage.getTaskConversationById(conversationId)
-  if (!conv) throw new Error(`task conversation ${conversationId} not found`)
+  const msg = await deps.storage.getTaskMessageByAgentRunId(runId)
+  if (!msg) throw new Error(`no coworker message for run ${runId}`)
   const content =
     run.status === 'succeeded'
       ? (run.output ?? '')
       : (run.output ?? '') ||
         `El turno del agente terminó en estado ${run.status}: ${run.errorMessage ?? 'sin detalle'}`
-  const row = await deps.storage.appendTaskMessage({
-    id: deps.newId(),
-    conversationId,
-    role: 'agent',
+  await deps.storage.updateTaskMessage({
+    id: msg.id,
     content,
-    agentRunId: run.id,
-    phase: conv.phase,
     model: run.model,
     tokensIn: run.tokensIn,
     tokensOut: run.tokensOut,
@@ -204,8 +202,23 @@ async function appendAgentTurn(conversationId: string, run: AgentRunRow): Promis
     now: deps.now(),
   })
   return unwrap(
-    await useCases.coworker.getConversationWithMessages(deps, conversationId),
-  ).messages.find((m) => m.id === row.id)!
+    await useCases.coworker.getConversationWithMessages(deps, msg.conversationId),
+  ).messages.find((m) => m.id === msg.id)!
+}
+
+/**
+ * Worker post-hook entry point: a coworker turn's run just closed. Complete its
+ * placeholder message regardless of whether any SSE connection is still open.
+ * Returns false if the run isn't a coworker turn.
+ */
+export async function completeCoworkerTurn(runId: string): Promise<boolean> {
+  const deps = coreDeps()
+  const msg = await deps.storage.getTaskMessageByAgentRunId(runId)
+  if (!msg) return false
+  const run = await deps.storage.getAgentRunById(runId)
+  if (!run) return false
+  await finalizeAgentTurn(runId, run)
+  return true
 }
 
 /**
