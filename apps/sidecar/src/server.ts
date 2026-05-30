@@ -19,7 +19,7 @@ import { troubleshootRouter } from './modules/troubleshoot/routes'
 import { workspaceRouter } from './modules/workspace/routes'
 import { coreDeps } from './shared/core-deps'
 import { loadHandshakeToken } from './shared/handshake'
-import { logger } from './shared/logger'
+import { logFilePath, logger } from './shared/logger'
 
 export function buildApp() {
   const app = new Hono()
@@ -38,7 +38,9 @@ export function buildApp() {
     }),
   )
 
-  app.get('/health', (c) => c.json({ ok: true, name: 'tortuga-os-sidecar', ts: Date.now() }))
+  app.get('/health', (c) =>
+    c.json({ ok: true, name: 'tortuga-os-sidecar', ts: Date.now(), logFile: logFilePath }),
+  )
 
   // Domain surface from api-server (all use-case-backed endpoints).
   app.route('/api', buildDomainRouter(coreDeps()))

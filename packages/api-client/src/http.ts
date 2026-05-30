@@ -22,7 +22,15 @@ export async function request<T>(
     ? await res.json()
     : null
   if (!res.ok) {
-    throw new ApiError(res.status, (json as { error?: never })?.error ?? { code: 'unknown' })
+    // Sidecar routes return either a structured `{ error: { code, message } }`
+    // or a plain `{ error: "texto" }`. Normalize the plain-string form so the
+    // operator sees the real message instead of "api 422: undefined".
+    const raw = (json as { error?: unknown } | null)?.error
+    const body =
+      typeof raw === 'string'
+        ? { code: 'error', message: raw }
+        : ((raw as { code: string } | undefined) ?? { code: 'unknown' })
+    throw new ApiError(res.status, body)
   }
   return json as T
 }

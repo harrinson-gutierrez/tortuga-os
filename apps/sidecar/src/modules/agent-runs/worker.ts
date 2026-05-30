@@ -495,7 +495,12 @@ async function processOneRun(deps: CoreDeps, runId: string): Promise<void> {
         onChunk(text) {
           deps.storage
             .appendAgentRunOutput({ id: run.id, chunk: text, now: Date.now() })
-            .catch(() => {})
+            .catch((err) => {
+              logger.warn(
+                { runId: run.id, err: (err as Error).message },
+                'agent-run: failed to persist output chunk (live view may show gaps)',
+              )
+            })
         },
       },
     )

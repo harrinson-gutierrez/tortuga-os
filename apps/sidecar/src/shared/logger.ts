@@ -1,12 +1,16 @@
+import { mkdirSync } from 'node:fs'
+import { join } from 'node:path'
 import pino from 'pino'
 import { env } from './env'
 
 /**
- * Shared logger. Writes to stdout by default.
+ * Shared logger. Writes to a console stream AND to a persistent file so the
+ * operator can open the log after the fact (the cmd console from `tauri dev`
+ * is ephemeral). The file lives at `<dataDir>/logs/sidecar-<date>.log`.
  *
- * When this sidecar runs as an MCP server (`TORTUGA_LOG_TO_STDERR=1`), we force
- * logs to stderr so they do not break the JSON-RPC stdio handshake that MCP
- * uses over stdout.
+ * When this sidecar runs as an MCP server (`TORTUGA_LOG_TO_STDERR=1`), the
+ * console stream is forced to stderr so it does not corrupt the JSON-RPC
+ * stdio handshake over stdout.
  */
 // Force stderr in two cases:
 // 1. The env var is explicitly set (handy for tests or alternate stdio).
@@ -16,7 +20,20 @@ import { env } from './env'
 //    statements and breaks the previous "set env var before import" trick.
 const argv1 = process.argv[1] ?? ''
 const useStderr = process.env.TORTUGA_LOG_TO_STDERR === '1' || argv1.endsWith('mcp-server.cjs')
-const destination = useStderr ? pino.destination(2) : undefined
+
+/** Resolve the persistent log file path; created lazily, best-effort. */
+function resolveLogFile(): string | null {
+  try {
+    const dir = join(env.dataDir, 'logs')
+    mkdirSync(dir, { recursive: true })
+    const day = new Date().toISOString().slice(0, 10)
+    return join(dir, `sidecar-${day}.log`)
+  } catch {
+    return null
+  }
+}
+
+export const logFilePath = resolveLogFile()
 
 /**
  * Redact paths — fields that must NEVER appear in the logs.
@@ -68,6 +85,16 @@ const REDACT_PATHS: string[] = [
   '*.phone',
 ]
 
+const consoleStream = pino.destination(useStderr ? 2 : 1)
+const streams: pino.StreamEntry[] = [{ level: env.logLevel as pino.Level, stream: consoleStream }]
+if (logFilePath) {
+  // append:true so each restart keeps the day's history; best-effort.
+  streams.push({
+    level: env.logLevel as pino.Level,
+    stream: pino.destination({ dest: logFilePath, append: true, sync: false }),
+  })
+}
+
 export const logger = pino(
   {
     level: env.logLevel,
@@ -76,18 +103,6 @@ export const logger = pino(
       censor: '[REDACTED]',
       remove: false,
     },
-    transport:
-      env.isDev && !useStderr
-        ? {
-            target: 'pino-pretty',
-            options: {
-              colorize: true,
-              translateTime: 'HH:MM:ss.l',
-              ignore: 'pid,hostname',
-              destination: 1,
-            },
-          }
-        : undefined,
   },
-  destination,
+  pino.multistream(streams),
 )

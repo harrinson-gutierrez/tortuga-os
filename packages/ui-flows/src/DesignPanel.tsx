@@ -1,7 +1,7 @@
 import type { ApiClient } from '@tortuga-os/api-client'
 import type { DesignFrameDTO, DesignTokens, StoryDTO } from '@tortuga-os/contracts'
 import { Badge, Button, Card, Eyebrow, TextField } from '@tortuga-os/ui'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { CoworkerLiveView } from './ScaffoldPanel'
 import { useAsyncData } from './useAsyncData'
 
@@ -40,7 +40,9 @@ export function DesignPanel({ client, projectCode, stories }: DesignPanelProps) 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const framesBeforeRunRef = useRef(0)
 
   const { data: frames } = useAsyncData(
     () => client.designFrames.listForProject(projectCode),
@@ -70,6 +72,8 @@ export function DesignPanel({ client, projectCode, stories }: DesignPanelProps) 
     }
     setBusy(true)
     setError(null)
+    setResult(null)
+    framesBeforeRunRef.current = frames?.length ?? 0
     try {
       const { runId } = await client.designFrames.import({ projectCode, figmaUrl: figmaUrl.trim() })
       setFigmaUrl('')
@@ -88,6 +92,8 @@ export function DesignPanel({ client, projectCode, stories }: DesignPanelProps) 
     }
     setBusy(true)
     setError(null)
+    setResult(null)
+    framesBeforeRunRef.current = frames?.length ?? 0
     try {
       const { runId } = await client.designFrames.generate({ projectCode, intent: intent.trim() })
       setIntent('')
@@ -97,6 +103,28 @@ export function DesignPanel({ client, projectCode, stories }: DesignPanelProps) 
     } finally {
       setBusy(false)
     }
+  }
+
+  // Called when the live view detects the run ended. Refresh frames and
+  // report a result based on whether new frames actually landed — the
+  // designer doesn't emit an "OK" marker, so frame count is the real signal.
+  async function onRunFinished() {
+    setActiveRunId(null)
+    try {
+      const after = await client.designFrames.listForProject(projectCode)
+      const delta = after.length - framesBeforeRunRef.current
+      setResult(
+        delta > 0
+          ? { ok: true, text: `✓ Diseño importado: ${delta} frame(s) nuevos.` }
+          : {
+              ok: false,
+              text: '✗ El run terminó pero no aparecieron frames. Revisa el output del agente arriba y el log del sidecar.',
+            },
+      )
+    } catch {
+      setResult({ ok: false, text: 'El run terminó pero no pude releer los frames.' })
+    }
+    setRefreshKey((k) => k + 1)
   }
 
   async function reassign(frame: DesignFrameDTO, storyId: string | null) {
@@ -192,15 +220,20 @@ export function DesignPanel({ client, projectCode, stories }: DesignPanelProps) 
         <div className="mt-4">
           <Eyebrow>Agente diseñador trabajando…</Eyebrow>
           <div className="mt-2">
-            <CoworkerLiveView
-              client={client}
-              runId={activeRunId}
-              onFinished={() => {
-                setActiveRunId(null)
-                setRefreshKey((k) => k + 1)
-              }}
-            />
+            <CoworkerLiveView client={client} runId={activeRunId} onFinished={onRunFinished} />
           </div>
+        </div>
+      )}
+
+      {result && (
+        <div
+          className={`mt-3 rounded-md border px-3 py-2 text-[12px] ${
+            result.ok
+              ? 'border-turtle/40 bg-turtle/10 text-text'
+              : 'border-danger/40 bg-danger/10 text-text'
+          }`}
+        >
+          {result.text}
         </div>
       )}
 

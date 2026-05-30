@@ -20,18 +20,42 @@ export interface DesignerRunRequest {
  * (mirroring the `<CODE>-000` arch story idiom), NOT off a build story.
  * Idempotent: reuses the story/task if they already exist.
  */
+type ResolveResult = { ok: true; taskId: string; projectId: string } | { ok: false; reason: string }
+
+/** Human-readable text from a use-case error (no universal `.message`). */
+function errText(e: {
+  code: string
+  message?: string
+  reason?: string
+  entity?: string
+  id?: string
+}): string {
+  return e.message ?? e.reason ?? (e.entity ? `${e.entity} ${e.id ?? ''}`.trim() : e.code)
+}
+
 async function resolveProjectDesignTask(
   deps: CoreDeps,
   projectCode: string,
-): Promise<{ taskId: string; projectId: string } | null> {
+): Promise<ResolveResult> {
   const proj = await deps.storage.getProjectByCode(projectCode)
-  if (!proj) return null
+  if (!proj) return { ok: false, reason: `No existe el proyecto ${projectCode}.` }
   const projectId = proj.project.id
 
   const salesPhase = await deps.storage.getSalesPhase(projectId)
-  if (!salesPhase) return null
+  if (!salesPhase) {
+    return {
+      ok: false,
+      reason: 'El proyecto no tiene fase de ventas todavía. Crea el proyecto desde una cotización.',
+    }
+  }
   const quote = await deps.storage.getLatestQuoteForSalesPhase(salesPhase.id)
-  if (!quote) return null
+  if (!quote) {
+    return {
+      ok: false,
+      reason:
+        'El proyecto no tiene cotización aún. El diseño nace de la cotización: crea y guarda una cotización (con sus historias) antes de diseñar.',
+    }
+  }
 
   const storyCode = `${proj.project.code}-000-DESIGN`
   let story = await deps.storage.getStoryByCode(storyCode)
@@ -59,15 +83,15 @@ async function resolveProjectDesignTask(
     })
     if (!created.ok) {
       logger.warn({ projectCode, error: created.error }, 'design: failed to create T0-DESIGN story')
-      return null
+      return { ok: false, reason: `No se pudo crear la tarea de diseño: ${errText(created.error)}` }
     }
     story = await deps.storage.getStoryById(created.value.id)
-    if (!story) return null
+    if (!story) return { ok: false, reason: 'No se pudo leer la historia de diseño recién creada.' }
   }
 
   const tasks = await deps.storage.listTasksForStory(story.id)
   const existing = tasks.find((t) => t.type === 'design')
-  if (existing) return { taskId: existing.id, projectId }
+  if (existing) return { ok: true, taskId: existing.id, projectId }
   const task = await useCases.tasks.createTask(deps, {
     storyId: story.id,
     code: `${storyCode}-T1`,
@@ -75,7 +99,9 @@ async function resolveProjectDesignTask(
     ownerRole: 'designer',
     estimatedHoursMin: 0,
   })
-  return task.ok ? { taskId: task.value.id, projectId } : null
+  if (!task.ok)
+    return { ok: false, reason: `No se pudo crear la tarea de diseño: ${errText(task.error)}` }
+  return { ok: true, taskId: task.value.id, projectId }
 }
 
 function buildImportPrompt(args: { figmaFileKey: string; figmaNodeId: string | null }): string {
@@ -110,18 +136,24 @@ function buildGeneratePrompt(args: { intent: string }): string {
   return lines.join('\n')
 }
 
+export type QueueDesignerResult = { ok: true; runId: string } | { ok: false; reason: string }
+
 /**
  * Queue a project-level `designer` run on the T0-DESIGN task. Returns the
- * runId, or null when the project/quote can't be resolved.
+ * runId, or a human-readable reason when the project/quote can't be
+ * resolved or the run can't be queued (surfaced to the operator in the UI).
  */
 export async function queueDesignerRun(
   deps: CoreDeps,
   req: DesignerRunRequest,
-): Promise<string | null> {
+): Promise<QueueDesignerResult> {
   const resolved = await resolveProjectDesignTask(deps, req.projectCode)
-  if (!resolved) {
-    logger.warn({ projectCode: req.projectCode }, 'design: could not resolve project design task')
-    return null
+  if (!resolved.ok) {
+    logger.warn(
+      { projectCode: req.projectCode, reason: resolved.reason },
+      'design: could not resolve project design task',
+    )
+    return { ok: false, reason: resolved.reason }
   }
   const userPrompt =
     req.mode === 'import'
@@ -143,7 +175,7 @@ export async function queueDesignerRun(
       { projectCode: req.projectCode, error: queued.error },
       'design: failed to queue run',
     )
-    return null
+    return { ok: false, reason: `No se pudo encolar el run: ${errText(queued.error)}` }
   }
-  return queued.value.id
+  return { ok: true, runId: queued.value.id }
 }
