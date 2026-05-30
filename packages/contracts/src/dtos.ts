@@ -23,6 +23,9 @@ import type {
   ReworkRootCause,
   Role,
   StoryStatus,
+  TaskConversationStatus,
+  TaskCoworkerPhase,
+  TaskExecutionMode,
   TaskStatus,
   TaskType,
 } from './enums'
@@ -164,6 +167,7 @@ export interface TaskDTO {
   ownerRole: Role
   assignee: string | null
   status: TaskStatus
+  executionMode: TaskExecutionMode
   currentIteration: number
   estimatedHoursMin: number
   actualHoursMin: number
@@ -352,8 +356,9 @@ export interface ProjectCostReportDTO {
 
 export interface AgentRunDTO {
   id: string
-  taskId: string
-  iterationId: string
+  taskId: string | null
+  iterationId: string | null
+  projectId: string | null
   agentKind: AgentKind
   provider: AgentProvider
   model: string
@@ -410,6 +415,39 @@ export interface DiscoveryMessageDTO {
 export interface DiscoveryConversationWithMessagesDTO {
   conversation: DiscoveryConversationDTO
   messages: DiscoveryMessageDTO[]
+}
+
+/** Coworker mode: turn-based conversation that drives a build task. */
+export interface TaskConversationDTO {
+  id: string
+  taskId: string
+  status: TaskConversationStatus
+  provider: DiscoveryProvider
+  cliSessionId: string | null
+  phase: TaskCoworkerPhase
+  createdAt: number
+  updatedAt: number
+}
+
+export interface TaskMessageDTO {
+  id: string
+  conversationId: string
+  role: DiscoveryMessageRole
+  content: string
+  /** The agent run this turn produced (null for user messages). */
+  agentRunId: string | null
+  phase: TaskCoworkerPhase | null
+  model: string | null
+  tokensIn: number
+  tokensOut: number
+  costCents: number
+  createdAt: number
+  updatedAt: number
+}
+
+export interface TaskConversationWithMessagesDTO {
+  conversation: TaskConversationDTO
+  messages: TaskMessageDTO[]
 }
 
 export interface QuoteModuleDTO {

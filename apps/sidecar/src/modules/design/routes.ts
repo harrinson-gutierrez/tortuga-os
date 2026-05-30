@@ -41,6 +41,22 @@ export const designRouter = new Hono()
     logger.info({ projectCode: body.projectCode, runId: queued.runId }, 'design: generate queued')
     return c.json({ runId: queued.runId, projectCode: body.projectCode }, 201)
   })
+  .post('/explore-style', async (c): Promise<Response> => {
+    const body = GenerateDesignInput.parse(await c.req.json())
+    const queued = await queueDesignerRun(coreDeps(), {
+      projectCode: body.projectCode,
+      mode: 'explore-style',
+      intent: body.intent,
+    })
+    if (!queued.ok) {
+      return c.json({ error: queued.reason }, 422)
+    }
+    logger.info(
+      { projectCode: body.projectCode, runId: queued.runId },
+      'design: explore-style queued',
+    )
+    return c.json({ runId: queued.runId, projectCode: body.projectCode }, 201)
+  })
   .post('/:frameId/approve', async (c): Promise<Response> => {
     const frameId = c.req.param('frameId')
     const result = await useCases.designFrames.patchDesignFrame(coreDeps(), frameId, {

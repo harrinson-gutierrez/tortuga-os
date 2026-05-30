@@ -12,6 +12,7 @@ import type { ProjectStack as DBProjectStack } from '@tortuga-os/contracts'
 import { Badge, Button, Card, Eyebrow, Select, Stack, TextField } from '@tortuga-os/ui'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AgentRunsPanel } from './AgentRunsPanel'
+import { CoworkerChat } from './CoworkerChat'
 import { GatesPanel } from './GatesPanel'
 import { CoworkerLiveView, ScaffoldPanel } from './ScaffoldPanel'
 import { AppFailedDiagnose, TroubleshootStepBody } from './TroubleshootShell'
@@ -260,6 +261,13 @@ export function TaskDetail({
     onChanged: bump,
   })
 
+  const executionMode = t.executionMode ?? 'coworker'
+  async function setExecutionMode(mode: 'coworker' | 'manual') {
+    if (mode === executionMode) return
+    await client.tasks.setExecutionMode(taskId, mode)
+    bump()
+  }
+
   return (
     // overflow-anchor:auto tells the browser to keep the user's visible
     // anchor element pinned across layout shifts caused by polling
@@ -293,14 +301,39 @@ export function TaskDetail({
             {humanizeStatus(t.status)}
           </Badge>
         </div>
-      </Card>
-
-      <Card>
-        <Eyebrow>¿Qué sigue?</Eyebrow>
-        <div className="mt-4">
-          <Stepper steps={steps} />
+        <div className="mt-3 inline-flex rounded-md border border-border overflow-hidden text-[12px]">
+          {(['coworker', 'manual'] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setExecutionMode(m)}
+              className={`px-3 py-1.5 ${
+                executionMode === m
+                  ? 'bg-brand text-white'
+                  : 'bg-bg-alt text-text-muted hover:text-text'
+              }`}
+            >
+              {m === 'coworker' ? 'Coworker' : 'Manual'}
+            </button>
+          ))}
         </div>
       </Card>
+
+      {executionMode === 'coworker' ? (
+        <CoworkerChat
+          client={client}
+          taskId={taskId}
+          stack={stack}
+          onModeSwitch={() => setExecutionMode('manual')}
+        />
+      ) : (
+        <Card>
+          <Eyebrow>¿Qué sigue?</Eyebrow>
+          <div className="mt-4">
+            <Stepper steps={steps} />
+          </div>
+        </Card>
+      )}
 
       {/* NOTE: EmulatorPanel used to live here as a Card. It's now
           rendered by App.tsx as a fixed right sidebar when the operator

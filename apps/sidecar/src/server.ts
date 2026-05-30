@@ -8,6 +8,7 @@ import {
 } from '@tortuga-os/api-server'
 import { Hono } from 'hono'
 import { agentRunsRouter } from './modules/agent-runs/routes'
+import { coworkerRouter } from './modules/coworker/routes'
 import { designRouter } from './modules/design/routes'
 import { discoveryRouter } from './modules/discovery/routes'
 import { gatesRunRouter } from './modules/gates/routes'
@@ -58,6 +59,10 @@ export function buildApp() {
   app.route('/api/gates', gatesRunRouter)
   // Discovery chat with the sales/discovery agent (calls Anthropic SDK).
   app.route('/api/discovery', discoveryRouter)
+  // Coworker mode: turn-based chat that drives a build task. Each turn queues
+  // a real dev agent run in the workspace (so files persist) and polls it to
+  // completion. Gates/QA stay the authority for "done".
+  app.route('/api/coworker', coworkerRouter)
   // Deterministic project scaffolding from JSON templates (no LLM).
   app.route('/api/scaffold', scaffoldRouter)
   // Skill packs catalog + per-project enable/disable toggles. The pack

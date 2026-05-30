@@ -74,7 +74,11 @@ import type {
   SecretDTO,
   StepAckDTO,
   StoryDTO,
+  TaskConversationWithMessagesDTO,
+  TaskCoworkerPhase,
   TaskDTO,
+  TaskExecutionMode,
+  TaskMessageDTO,
   TroubleshootReportDTO,
   UpsertStepAckInput,
   WorkEntryDTO,
@@ -171,6 +175,8 @@ export function createApiClient(config: ApiClientConfig) {
       listIterations: (id: string) =>
         request<IterationDTO[]>(config, 'GET', `/api/tasks/${id}/iterations`),
       getIteration: (id: string) => request<IterationDTO>(config, 'GET', `/api/iterations/${id}`),
+      setExecutionMode: (id: string, mode: TaskExecutionMode) =>
+        request<TaskDTO>(config, 'POST', `/api/coworker/tasks/${id}/execution-mode`, { mode }),
     },
 
     gates: {
@@ -320,6 +326,66 @@ export function createApiClient(config: ApiClientConfig) {
           config,
           'POST',
           `/api/discovery/conversations/${conversationId}/approve`,
+        ),
+    },
+
+    coworker: {
+      getOrStart: (taskId: string, provider: 'anthropic-sdk' | 'claude-cli' = 'claude-cli') =>
+        request<TaskConversationWithMessagesDTO>(
+          config,
+          'GET',
+          `/api/coworker/tasks/${encodeURIComponent(taskId)}/conversation?provider=${provider}`,
+        ),
+      load: (conversationId: string) =>
+        request<TaskConversationWithMessagesDTO>(
+          config,
+          'GET',
+          `/api/coworker/conversations/${conversationId}`,
+        ),
+      sendMessage: (conversationId: string, content: string) =>
+        request<{ userMessage: TaskMessageDTO; agentMessage: TaskMessageDTO; runId: string }>(
+          config,
+          'POST',
+          `/api/coworker/conversations/${conversationId}/messages`,
+          { content },
+        ),
+      sendMessageStream: (
+        conversationId: string,
+        content: string,
+        callbacks: {
+          onUserSaved?: (m: TaskMessageDTO) => void
+          onRunQueued?: (runId: string) => void
+          onDelta?: (text: string) => void
+          onDone?: (agentMessage: TaskMessageDTO, runId: string) => void
+          onError?: (message: string) => void
+        },
+        signal?: AbortSignal,
+      ) =>
+        streamSSE<
+          | { type: 'user-saved'; message: TaskMessageDTO }
+          | { type: 'run-queued'; runId: string }
+          | { type: 'delta'; text: string }
+          | { type: 'done'; agentMessage: TaskMessageDTO; runId: string }
+          | { type: 'error'; message: string }
+        >(
+          config,
+          `/api/coworker/conversations/${conversationId}/messages/stream`,
+          { content },
+          (ev) => {
+            if (ev.type === 'user-saved') callbacks.onUserSaved?.(ev.message)
+            else if (ev.type === 'run-queued') callbacks.onRunQueued?.(ev.runId)
+            else if (ev.type === 'delta') callbacks.onDelta?.(ev.text)
+            else if (ev.type === 'done') callbacks.onDone?.(ev.agentMessage, ev.runId)
+            else if (ev.type === 'error') callbacks.onError?.(ev.message)
+          },
+          signal,
+        ),
+      setPhase: (conversationId: string, phase: TaskCoworkerPhase) =>
+        request<TaskConversationWithMessagesDTO>(
+          config,
+          'POST',
+          `/api/coworker/conversations/${conversationId}/phase`,
+          { phase },
         ),
     },
 
@@ -674,6 +740,15 @@ export function createApiClient(config: ApiClientConfig) {
           config,
           'POST',
           '/api/design/generate',
+          input,
+        ),
+      // Visual discovery: queue a designer run that proposes 2-3 style
+      // directions (sample frames) instead of every per-story screen.
+      exploreStyle: (input: GenerateDesignInput) =>
+        request<{ runId: string; projectCode: string }>(
+          config,
+          'POST',
+          '/api/design/explore-style',
           input,
         ),
       // Assign or unassign a pooled frame to a build story.

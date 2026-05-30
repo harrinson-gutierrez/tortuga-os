@@ -37,6 +37,7 @@ function isBuildStory(code: string): boolean {
 export function DesignPanel({ client, projectCode, stories }: DesignPanelProps) {
   const [figmaUrl, setFigmaUrl] = useState('')
   const [intent, setIntent] = useState('')
+  const [styleIntent, setStyleIntent] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
@@ -97,6 +98,26 @@ export function DesignPanel({ client, projectCode, stories }: DesignPanelProps) 
         ...(trimmed ? { intent: trimmed } : {}),
       })
       setIntent('')
+      setActiveRunId(runId)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function runExploreStyle() {
+    setBusy(true)
+    setError(null)
+    setResult(null)
+    framesBeforeRunRef.current = frames?.length ?? 0
+    try {
+      const trimmed = styleIntent.trim()
+      const { runId } = await client.designFrames.exploreStyle({
+        projectCode,
+        ...(trimmed ? { intent: trimmed } : {}),
+      })
+      setStyleIntent('')
       setActiveRunId(runId)
     } catch (err) {
       setError((err as Error).message)
@@ -249,7 +270,7 @@ export function DesignPanel({ client, projectCode, stories }: DesignPanelProps) 
         </div>
       )}
 
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
         <div className="rounded-md border border-border bg-bg/30 p-3">
           <Eyebrow>Importar Figma del proyecto</Eyebrow>
           <div className="mt-2">
@@ -296,6 +317,34 @@ export function DesignPanel({ client, projectCode, stories }: DesignPanelProps) 
               disabled={busy || !figmaReady || !!activeRunId}
             >
               {busy ? '…' : 'Generar'}
+            </Button>
+          </div>
+        </div>
+
+        <div className="rounded-md border border-border bg-bg/30 p-3">
+          <Eyebrow>Explorar dirección visual</Eyebrow>
+          <div className="text-[11px] text-text-muted mt-1">
+            Propone 2-3 direcciones de estilo (una pantalla muestra cada una) para que elijas el
+            look antes de diseñar todas las pantallas. Las opciones caen al pool como "Style option
+            N".
+          </div>
+          <div className="mt-2">
+            <textarea
+              className="w-full bg-bg border border-border rounded-md px-3 py-2 text-[12px] text-text leading-snug min-h-[64px] focus:outline-none focus:border-brand"
+              placeholder="(Opcional) Pistas de estilo: minimalista, oscuro, editorial…"
+              value={styleIntent}
+              onChange={(e) => setStyleIntent(e.target.value)}
+              disabled={busy || !figmaReady || !!activeRunId}
+            />
+          </div>
+          <div className="mt-2 flex justify-end">
+            <Button
+              size="sm"
+              variant="turtle"
+              onClick={runExploreStyle}
+              disabled={busy || !figmaReady || !!activeRunId}
+            >
+              {busy ? '…' : 'Explorar'}
             </Button>
           </div>
         </div>

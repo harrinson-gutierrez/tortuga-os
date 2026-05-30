@@ -334,6 +334,53 @@ async function resolveWorkspaceForTask(
   }
 }
 
+interface WorkspaceCtx {
+  path: string
+  projectId: string
+  stack: string
+  disabledSkills: string[]
+  phaseId: string | null
+}
+
+/** Resolve workspace + project context directly from a projectId, for
+ * project-scoped runs (design/frame-assigner) that carry no task. phaseId is
+ * null — the run isn't anchored to a build phase, so its CLI session gets a
+ * fresh seed (buildSessionId already handles a null phase). */
+async function resolveWorkspaceForProject(
+  deps: CoreDeps,
+  projectId: string,
+): Promise<WorkspaceCtx | null> {
+  const project = await deps.storage.getProjectById(projectId)
+  if (!project) return null
+  let disabledSkills: string[] = []
+  try {
+    const parsed = JSON.parse(project.disabledSkillsJson)
+    if (Array.isArray(parsed) && parsed.every((x) => typeof x === 'string')) {
+      disabledSkills = parsed
+    }
+  } catch {
+    /* corrupt JSON falls back to no disables */
+  }
+  return {
+    phaseId: null,
+    path: project.workspacePath ?? workspacePathFor(project.code),
+    projectId: project.id,
+    stack: project.stack,
+    disabledSkills,
+  }
+}
+
+/** Resolve workspace for any run: via its task (build runs) or its projectId
+ * (project-scoped runs). */
+async function resolveWorkspaceForRun(
+  deps: CoreDeps,
+  run: AgentRunRow,
+): Promise<WorkspaceCtx | null> {
+  if (run.taskId) return resolveWorkspaceForTask(deps, run.taskId)
+  if (run.projectId) return resolveWorkspaceForProject(deps, run.projectId)
+  return null
+}
+
 // Marker appended to a re-queued design run's prompt so we never re-queue the
 // same run more than once when the agent keeps emitting malformed output.
 const DESIGN_RETRY_MARKER = '<!-- design-retry:1 -->'
@@ -385,14 +432,25 @@ async function handleDesignHookFailure(
     'No incluyas texto después del bloque JSON.',
   ].join('\n')
 
-  const requeued = await useCases.agentRuns.queueAgentRun(deps, {
-    taskId: run.taskId,
-    agentKind: run.agentKind,
-    provider: run.provider,
-    model: run.model,
-    systemPrompt: run.systemPrompt,
-    userPrompt: correctivePrompt,
-  })
+  // Designer/frame-assigner runs are project-scoped (no task); re-queue them
+  // the same way. Fall back to the task path for any task-anchored design run.
+  const requeued = run.projectId
+    ? await useCases.agentRuns.queueProjectAgentRun(deps, {
+        projectId: run.projectId,
+        agentKind: run.agentKind,
+        provider: run.provider,
+        model: run.model,
+        systemPrompt: run.systemPrompt,
+        userPrompt: correctivePrompt,
+      })
+    : await useCases.agentRuns.queueAgentRun(deps, {
+        taskId: run.taskId as string,
+        agentKind: run.agentKind,
+        provider: run.provider,
+        model: run.model,
+        systemPrompt: run.systemPrompt,
+        userPrompt: correctivePrompt,
+      })
   if (!requeued.ok) {
     logger.warn(
       { runId: run.id, error: requeued.error },
@@ -427,12 +485,12 @@ async function processOneRun(deps: CoreDeps, runId: string): Promise<void> {
     return
   }
 
-  const wsCtx = await resolveWorkspaceForTask(deps, run.taskId)
+  const wsCtx = await resolveWorkspaceForRun(deps, run)
   if (!wsCtx) {
     await deps.storage.closeAgentRunUnsuccessful({
       runId: run.id,
       status: 'failed',
-      errorMessage: 'could not resolve workspace path for the task',
+      errorMessage: 'could not resolve workspace path for the run',
       output: '',
       tokensIn: 0,
       tokensOut: 0,

@@ -30,6 +30,9 @@ import type {
   ReworkRootCause,
   Role,
   StoryStatus,
+  TaskConversationStatus,
+  TaskCoworkerPhase,
+  TaskExecutionMode,
   TaskStatus,
   TaskType,
   TroubleshootStatus,
@@ -130,6 +133,7 @@ export interface TaskRow {
   ownerRole: Role
   assignee: string | null
   status: TaskStatus
+  executionMode: TaskExecutionMode
   currentIteration: number
   estimatedHoursMin: number
   actualHoursMin: number
@@ -219,8 +223,11 @@ export interface WorkEntryRow {
 
 export interface AgentRunRow {
   id: string
-  taskId: string
-  iterationId: string
+  // Either (taskId + iterationId) for build runs, or projectId for
+  // project-scoped runs (design/frame-assigner). Mutually exclusive.
+  taskId: string | null
+  iterationId: string | null
+  projectId: string | null
   agentKind: AgentKind
   provider: AgentProvider
   model: string
@@ -257,6 +264,32 @@ export interface DiscoveryMessageRow {
   conversationId: string
   role: DiscoveryMessageRole
   content: string
+  model: string | null
+  tokensIn: number
+  tokensOut: number
+  costCents: number
+  createdAt: number
+  updatedAt: number
+}
+
+export interface TaskConversationRow {
+  id: string
+  taskId: string
+  status: TaskConversationStatus
+  provider: DiscoveryProvider
+  cliSessionId: string | null
+  phase: TaskCoworkerPhase
+  createdAt: number
+  updatedAt: number
+}
+
+export interface TaskMessageRow {
+  id: string
+  conversationId: string
+  role: DiscoveryMessageRole
+  content: string
+  agentRunId: string | null
+  phase: TaskCoworkerPhase | null
   model: string | null
   tokensIn: number
   tokensOut: number

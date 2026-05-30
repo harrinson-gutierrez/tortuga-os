@@ -20,11 +20,7 @@ function isBuildStory(code: string): boolean {
 export async function queueFrameAssignerRun(
   deps: CoreDeps,
   projectId: string,
-  designRunId: string,
 ): Promise<string | null> {
-  const designRun = await deps.storage.getAgentRunById(designRunId)
-  if (!designRun) return null
-
   const frames = await deps.storage.listDesignFramesForProject(projectId)
   const pool = frames.filter((f) => f.storyId === null)
   if (pool.length === 0) return null
@@ -58,8 +54,8 @@ export async function queueFrameAssignerRun(
     ),
   ].join('\n')
 
-  const queued = await useCases.agentRuns.queueAgentRun(deps, {
-    taskId: designRun.taskId,
+  const queued = await useCases.agentRuns.queueProjectAgentRun(deps, {
+    projectId,
     agentKind: 'frame-assigner',
     provider: 'claude-cli',
     systemPrompt: systemPromptFor('frame-assigner'),

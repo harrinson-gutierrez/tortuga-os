@@ -77,6 +77,21 @@ export const TASK_STATUSES = [
 ] as const
 export type TaskStatus = (typeof TASK_STATUSES)[number]
 
+export const TASK_EXECUTION_MODES = ['coworker', 'manual'] as const
+export type TaskExecutionMode = (typeof TASK_EXECUTION_MODES)[number]
+
+export const TASK_COWORKER_PHASES = [
+  'planning',
+  'construction',
+  'execution',
+  'validation',
+  'delivery',
+] as const
+export type TaskCoworkerPhase = (typeof TASK_COWORKER_PHASES)[number]
+
+export const TASK_CONVERSATION_STATUSES = ['active', 'archived'] as const
+export type TaskConversationStatus = (typeof TASK_CONVERSATION_STATUSES)[number]
+
 export const ITERATION_OUTCOMES = ['approved', 'rejected', 'rework_requested', 'reopened'] as const
 export type IterationOutcome = (typeof ITERATION_OUTCOMES)[number]
 

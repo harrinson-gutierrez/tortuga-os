@@ -25,15 +25,22 @@ export type HookResult =
 async function resolveContextForRun(deps: CoreDeps, runId: string): Promise<DesignContext | null> {
   const run = await deps.storage.getAgentRunById(runId)
   if (!run) return null
-  const task = await deps.storage.getTaskById(run.taskId)
-  if (!task) return null
-  const story = await deps.storage.getStoryById(task.storyId)
-  if (!story) return null
-  const quote = await deps.storage.getQuoteById(story.quoteId)
-  if (!quote) return null
-  const phase = await deps.storage.getPhaseById(quote.phaseId)
-  if (!phase) return null
-  const project = await deps.storage.getProjectById(phase.projectId)
+  // Designer runs are now project-scoped: resolve the project directly.
+  // (Legacy task-anchored design runs still resolve via the task chain.)
+  let projectId = run.projectId
+  if (!projectId) {
+    if (!run.taskId) return null
+    const task = await deps.storage.getTaskById(run.taskId)
+    if (!task) return null
+    const story = await deps.storage.getStoryById(task.storyId)
+    if (!story) return null
+    const quote = await deps.storage.getQuoteById(story.quoteId)
+    if (!quote) return null
+    const phase = await deps.storage.getPhaseById(quote.phaseId)
+    if (!phase) return null
+    projectId = phase.projectId
+  }
+  const project = await deps.storage.getProjectById(projectId)
   if (!project) return null
   return {
     workspace: project.workspacePath ?? workspacePathFor(project.code),
@@ -170,7 +177,7 @@ export async function handleDesignerOutput(
   )
 
   // Auto-distribute the freshly-imported frames to their build stories.
-  await queueFrameAssignerRun(deps, ctx.projectId, runId)
+  await queueFrameAssignerRun(deps, ctx.projectId)
 
   const frameCount = parsed.output.frames.length
   const base = `${frameCount} frame(s) ${status === 'generated' ? 'generados' : 'importados'}`

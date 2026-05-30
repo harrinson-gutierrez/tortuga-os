@@ -212,6 +212,9 @@ export const taskStatusValues = [
 ] as const
 export type TaskStatus = (typeof taskStatusValues)[number]
 
+export const taskExecutionModeValues = ['coworker', 'manual'] as const
+export type TaskExecutionMode = (typeof taskExecutionModeValues)[number]
+
 export const tasks = sqliteTable('tasks', {
   id: text('id').primaryKey(),
   code: text('code').notNull().unique(),
@@ -222,6 +225,11 @@ export const tasks = sqliteTable('tasks', {
   ownerRole: text('owner_role', { enum: roleValues }).notNull(),
   assignee: text('assignee'),
   status: text('status', { enum: taskStatusValues }).notNull().default('pending'),
+  // How the operator drives this task: 'coworker' (conversational, default) or
+  // 'manual' (the guided 6-step wizard, fallback). Switchable at any time.
+  executionMode: text('execution_mode', { enum: taskExecutionModeValues })
+    .notNull()
+    .default('coworker'),
   currentIteration: integer('current_iteration').notNull().default(1),
   estimatedHoursMin: integer('estimated_hours_min').notNull().default(0),
   actualHoursMin: integer('actual_hours_min').notNull().default(0),
@@ -432,31 +440,40 @@ export const agentRunStatusValues = [
 ] as const
 export type AgentRunStatus = (typeof agentRunStatusValues)[number]
 
-export const agentRuns = sqliteTable('agent_runs', {
-  id: text('id').primaryKey(),
-  taskId: text('task_id')
-    .notNull()
-    .references(() => tasks.id, { onDelete: 'cascade' }),
-  iterationId: text('iteration_id')
-    .notNull()
-    .references(() => iterations.id, { onDelete: 'cascade' }),
-  agentKind: text('agent_kind', { enum: agentKindValues }).notNull(),
-  provider: text('provider', { enum: agentProviderValues }).notNull(),
-  model: text('model').notNull(),
-  status: text('status', { enum: agentRunStatusValues }).notNull().default('queued'),
-  systemPrompt: text('system_prompt').notNull(),
-  userPrompt: text('user_prompt').notNull(),
-  output: text('output'),
-  errorMessage: text('error_message'),
-  tokensIn: integer('tokens_in').notNull().default(0),
-  tokensOut: integer('tokens_out').notNull().default(0),
-  costCents: integer('cost_cents').notNull().default(0),
-  startedAt: integer('started_at'),
-  closedAt: integer('closed_at'),
-  workEntryId: text('work_entry_id').references(() => workEntries.id, { onDelete: 'set null' }),
-  evidenceId: text('evidence_id').references(() => evidence.id, { onDelete: 'set null' }),
-  ...tsCols,
-})
+// A run is anchored EITHER to a task (its build iteration) OR directly to a
+// project (design / frame-assigner / future project-scoped runs that have no
+// place in the build backlog). taskId+iterationId and projectId are mutually
+// exclusive; the use-case layer enforces it (the DB only keeps all three
+// nullable). projectId lets the worker + post-hooks resolve the workspace
+// without walking task -> story -> quote -> phase -> project.
+export const agentRuns = sqliteTable(
+  'agent_runs',
+  {
+    id: text('id').primaryKey(),
+    taskId: text('task_id').references(() => tasks.id, { onDelete: 'cascade' }),
+    iterationId: text('iteration_id').references(() => iterations.id, { onDelete: 'cascade' }),
+    projectId: text('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+    agentKind: text('agent_kind', { enum: agentKindValues }).notNull(),
+    provider: text('provider', { enum: agentProviderValues }).notNull(),
+    model: text('model').notNull(),
+    status: text('status', { enum: agentRunStatusValues }).notNull().default('queued'),
+    systemPrompt: text('system_prompt').notNull(),
+    userPrompt: text('user_prompt').notNull(),
+    output: text('output'),
+    errorMessage: text('error_message'),
+    tokensIn: integer('tokens_in').notNull().default(0),
+    tokensOut: integer('tokens_out').notNull().default(0),
+    costCents: integer('cost_cents').notNull().default(0),
+    startedAt: integer('started_at'),
+    closedAt: integer('closed_at'),
+    workEntryId: text('work_entry_id').references(() => workEntries.id, { onDelete: 'set null' }),
+    evidenceId: text('evidence_id').references(() => evidence.id, { onDelete: 'set null' }),
+    ...tsCols,
+  },
+  (t) => ({
+    byProject: index('agent_runs_project_idx').on(t.projectId),
+  }),
+)
 
 export const discoveryStatusValues = ['active', 'converged', 'archived'] as const
 export type DiscoveryStatus = (typeof discoveryStatusValues)[number]
@@ -493,6 +510,66 @@ export const discoveryMessages = sqliteTable('discovery_messages', {
   costCents: integer('cost_cents').notNull().default(0),
   ...tsCols,
 })
+
+// Coworker mode: a turn-based conversation that drives a build task like
+// Claude Code (the operator and the dev agent take turns; work persists in the
+// workspace between turns). Mirrors the discovery chat tables. The phase is a
+// coworker-local layer over the task's gates/status — gates and QA stay the
+// authority for "done".
+export const taskCoworkerPhaseValues = [
+  'planning',
+  'construction',
+  'execution',
+  'validation',
+  'delivery',
+] as const
+export type TaskCoworkerPhase = (typeof taskCoworkerPhaseValues)[number]
+
+export const taskConversationStatusValues = ['active', 'archived'] as const
+export type TaskConversationStatus = (typeof taskConversationStatusValues)[number]
+
+export const taskConversations = sqliteTable(
+  'task_conversations',
+  {
+    id: text('id').primaryKey(),
+    taskId: text('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    status: text('status', { enum: taskConversationStatusValues }).notNull().default('active'),
+    provider: text('provider', { enum: discoveryProviderValues }).notNull().default('claude-cli'),
+    // Stable across turns so the CLI prompt cache survives (cheap continuity).
+    cliSessionId: text('cli_session_id'),
+    phase: text('phase', { enum: taskCoworkerPhaseValues }).notNull().default('planning'),
+    ...tsCols,
+  },
+  (t) => ({
+    byTask: index('task_conversations_task_idx').on(t.taskId),
+  }),
+)
+
+export const taskMessages = sqliteTable(
+  'task_messages',
+  {
+    id: text('id').primaryKey(),
+    conversationId: text('conversation_id')
+      .notNull()
+      .references(() => taskConversations.id, { onDelete: 'cascade' }),
+    role: text('role', { enum: discoveryMessageRoleValues }).notNull(),
+    content: text('content').notNull(),
+    // The agent run this turn produced (null for user messages); lets the chat
+    // bubble reuse the live RunTranscript view.
+    agentRunId: text('agent_run_id').references(() => agentRuns.id, { onDelete: 'set null' }),
+    phase: text('phase', { enum: taskCoworkerPhaseValues }),
+    model: text('model'),
+    tokensIn: integer('tokens_in').notNull().default(0),
+    tokensOut: integer('tokens_out').notNull().default(0),
+    costCents: integer('cost_cents').notNull().default(0),
+    ...tsCols,
+  },
+  (t) => ({
+    byConversation: index('task_messages_conversation_idx').on(t.conversationId),
+  }),
+)
 
 export const quoteModules = sqliteTable('quote_modules', {
   id: text('id').primaryKey(),

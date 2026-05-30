@@ -66,6 +66,8 @@ import type {
   StepAckRow,
   Storage,
   StoryRow,
+  TaskConversationRow,
+  TaskMessageRow,
   TaskRow,
   TroubleshootReportRow,
   UpdateTaskStatusArgs,
@@ -107,6 +109,8 @@ import {
   secrets,
   stepAcks,
   stories,
+  taskConversations,
+  taskMessages,
   tasks,
   troubleshootReports,
   workEntries,
@@ -902,8 +906,9 @@ export function createSqliteStorage(db: Db): Storage {
     async createAgentRun(args: CreateAgentRunArgs) {
       await db.insert(agentRuns).values({
         id: args.id,
-        taskId: args.taskId,
-        iterationId: args.iterationId,
+        taskId: args.taskId ?? null,
+        iterationId: args.iterationId ?? null,
+        projectId: args.projectId ?? null,
         agentKind: args.agentKind,
         provider: args.provider,
         model: args.model,
@@ -942,10 +947,33 @@ export function createSqliteStorage(db: Db): Storage {
     async closeAgentRunSucceeded(args: CloseAgentRunSucceededArgs) {
       const run = await db.select().from(agentRuns).where(eq(agentRuns.id, args.runId)).get()
       if (!run) throw new Error(`agent_run ${args.runId} not found at close`)
+
+      // Project-scoped runs (design/frame-assigner) have no task/iteration, so
+      // they don't log work entries or evidence against a build task — they
+      // just flip the run to succeeded with its output + metrics.
+      const isProjectScoped = run.taskId === null
+      if (isProjectScoped) {
+        await db
+          .update(agentRuns)
+          .set({
+            status: 'succeeded',
+            output: args.output,
+            tokensIn: args.tokensIn,
+            tokensOut: args.tokensOut,
+            costCents: args.costCents,
+            startedAt: args.startedAt,
+            closedAt: args.closedAt,
+            updatedAt: args.closedAt,
+          })
+          .where(eq(agentRuns.id, args.runId))
+        const projRow = await db.select().from(agentRuns).where(eq(agentRuns.id, args.runId)).get()
+        return projRow as AgentRunRow
+      }
+
       const task = await db
         .select({ actualHoursMin: tasks.actualHoursMin })
         .from(tasks)
-        .where(eq(tasks.id, run.taskId))
+        .where(eq(tasks.id, run.taskId as string))
         .get()
       if (!task) throw new Error(`task ${run.taskId} not found at close`)
 
@@ -956,8 +984,8 @@ export function createSqliteStorage(db: Db): Storage {
         tx.insert(evidence)
           .values({
             id: args.evidenceId,
-            taskId: run.taskId,
-            iterationId: run.iterationId,
+            taskId: run.taskId as string,
+            iterationId: run.iterationId as string,
             type: 'dev',
             kind: 'gate_output',
             path: args.evidencePath,
@@ -972,8 +1000,8 @@ export function createSqliteStorage(db: Db): Storage {
         tx.insert(workEntries)
           .values({
             id: args.workEntryId,
-            iterationId: run.iterationId,
-            taskId: run.taskId,
+            iterationId: run.iterationId as string,
+            taskId: run.taskId as string,
             personId: args.botPersonId,
             role: run.agentKind === 'qa' ? 'qa' : 'dev',
             minutes,
@@ -990,7 +1018,7 @@ export function createSqliteStorage(db: Db): Storage {
             actualHoursMin: task.actualHoursMin + minutes,
             updatedAt: args.closedAt,
           })
-          .where(eq(tasks.id, run.taskId))
+          .where(eq(tasks.id, run.taskId as string))
           .run()
 
         tx.update(agentRuns)
@@ -1201,6 +1229,133 @@ export function createSqliteStorage(db: Db): Storage {
         .where(eq(discoveryConversations.id, args.conversationId))
         .get()
       return row as DiscoveryConversationRow
+    },
+
+    async getTaskConversationById(id) {
+      const row = await db
+        .select()
+        .from(taskConversations)
+        .where(eq(taskConversations.id, id))
+        .get()
+      return (row as TaskConversationRow | undefined) ?? null
+    },
+
+    async getActiveTaskConversationForTask(taskId) {
+      // A task has at most one live conversation; resume the most recent
+      // non-archived one. Archived conversations are finished — a new one
+      // can be started afterwards.
+      const row = await db
+        .select()
+        .from(taskConversations)
+        .where(and(eq(taskConversations.taskId, taskId), ne(taskConversations.status, 'archived')))
+        .orderBy(desc(taskConversations.createdAt))
+        .get()
+      return (row as TaskConversationRow | undefined) ?? null
+    },
+
+    async createTaskConversation(args) {
+      await db
+        .insert(taskConversations)
+        .values({
+          id: args.id,
+          taskId: args.taskId,
+          status: 'active',
+          provider: args.provider,
+          cliSessionId: null,
+          phase: 'planning',
+          createdAt: args.now,
+          updatedAt: args.now,
+        })
+        .run()
+      const row = await db
+        .select()
+        .from(taskConversations)
+        .where(eq(taskConversations.id, args.id))
+        .get()
+      return row as TaskConversationRow
+    },
+
+    async listTaskMessages(conversationId) {
+      return db
+        .select()
+        .from(taskMessages)
+        .where(eq(taskMessages.conversationId, conversationId))
+        .orderBy(asc(taskMessages.createdAt))
+        .all() as TaskMessageRow[]
+    },
+
+    async appendTaskMessage(args) {
+      await db
+        .insert(taskMessages)
+        .values({
+          id: args.id,
+          conversationId: args.conversationId,
+          role: args.role,
+          content: args.content,
+          agentRunId: args.agentRunId ?? null,
+          phase: args.phase ?? null,
+          model: args.model ?? null,
+          tokensIn: args.tokensIn ?? 0,
+          tokensOut: args.tokensOut ?? 0,
+          costCents: args.costCents ?? 0,
+          createdAt: args.now,
+          updatedAt: args.now,
+        })
+        .run()
+      const row = await db.select().from(taskMessages).where(eq(taskMessages.id, args.id)).get()
+      return row as TaskMessageRow
+    },
+
+    async setTaskConversationPhase(args) {
+      await db
+        .update(taskConversations)
+        .set({ phase: args.phase, updatedAt: args.now })
+        .where(eq(taskConversations.id, args.id))
+        .run()
+      const row = await db
+        .select()
+        .from(taskConversations)
+        .where(eq(taskConversations.id, args.id))
+        .get()
+      return row as TaskConversationRow
+    },
+
+    async setTaskConversationCliSessionId(args) {
+      await db
+        .update(taskConversations)
+        .set({ cliSessionId: args.cliSessionId, updatedAt: args.now })
+        .where(eq(taskConversations.id, args.id))
+        .run()
+      const row = await db
+        .select()
+        .from(taskConversations)
+        .where(eq(taskConversations.id, args.id))
+        .get()
+      return row as TaskConversationRow
+    },
+
+    async archiveTaskConversation(args) {
+      await db
+        .update(taskConversations)
+        .set({ status: 'archived', updatedAt: args.now })
+        .where(eq(taskConversations.id, args.id))
+        .run()
+      const row = await db
+        .select()
+        .from(taskConversations)
+        .where(eq(taskConversations.id, args.id))
+        .get()
+      return row as TaskConversationRow
+    },
+
+    async setTaskExecutionMode(args) {
+      await db
+        .update(tasks)
+        .set({ executionMode: args.mode, updatedAt: args.now })
+        .where(eq(tasks.id, args.taskId))
+        .run()
+      const row = await db.select().from(tasks).where(eq(tasks.id, args.taskId)).get()
+      return row as TaskRow
     },
 
     async listQuoteModulesForProject(projectId: string) {

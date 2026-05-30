@@ -25,6 +25,8 @@ import type {
   PhaseType,
   ProjectEnvironment,
   Role,
+  TaskCoworkerPhase,
+  TaskExecutionMode,
   TaskStatus,
   TaskType,
   TroubleshootStatus,
@@ -58,6 +60,8 @@ import type {
   StepAckKind,
   StepAckRow,
   StoryRow,
+  TaskConversationRow,
+  TaskMessageRow,
   TaskRow,
   TroubleshootReportRow,
   WorkEntryRow,
@@ -643,6 +647,46 @@ export interface Storage {
     now: number
   }): Promise<DiscoveryConversationRow>
 
+  // ── coworker mode (turn-based task conversation) ────────────────────
+  getTaskConversationById(id: string): Promise<TaskConversationRow | null>
+  getActiveTaskConversationForTask(taskId: string): Promise<TaskConversationRow | null>
+  createTaskConversation(args: {
+    id: string
+    taskId: string
+    provider: 'anthropic-sdk' | 'claude-cli'
+    now: number
+  }): Promise<TaskConversationRow>
+  listTaskMessages(conversationId: string): Promise<TaskMessageRow[]>
+  appendTaskMessage(args: {
+    id: string
+    conversationId: string
+    role: 'user' | 'agent'
+    content: string
+    agentRunId?: string | null
+    phase?: TaskCoworkerPhase | null
+    model?: string | null
+    tokensIn?: number
+    tokensOut?: number
+    costCents?: number
+    now: number
+  }): Promise<TaskMessageRow>
+  setTaskConversationPhase(args: {
+    id: string
+    phase: TaskCoworkerPhase
+    now: number
+  }): Promise<TaskConversationRow>
+  setTaskConversationCliSessionId(args: {
+    id: string
+    cliSessionId: string
+    now: number
+  }): Promise<TaskConversationRow>
+  archiveTaskConversation(args: { id: string; now: number }): Promise<TaskConversationRow>
+  setTaskExecutionMode(args: {
+    taskId: string
+    mode: TaskExecutionMode
+    now: number
+  }): Promise<TaskRow>
+
   // ── quote modules (parametric templates per project) ────────────────
   listQuoteModulesForProject(projectId: string): Promise<QuoteModuleRow[]>
   getQuoteModuleById(id: string): Promise<QuoteModuleRow | null>
@@ -751,8 +795,10 @@ export interface UpsertStepAckArgs {
 
 export interface CreateAgentRunArgs {
   id: string
-  taskId: string
-  iterationId: string
+  // Build runs pass taskId + iterationId; project-scoped runs pass projectId.
+  taskId?: string | null
+  iterationId?: string | null
+  projectId?: string | null
   agentKind: AgentKind
   provider: AgentProvider
   model: string
