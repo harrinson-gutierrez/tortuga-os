@@ -106,26 +106,35 @@ export const ImportDesignInput = z.object({
 })
 export type ImportDesignInput = z.infer<typeof ImportDesignInput>
 
-/** Operator describes intent; the designer agent generates the project design. */
+/**
+ * Generate the project design. The screens come from the project's build
+ * stories (loaded server-side); `intent` is optional extra context the
+ * operator can add (branding notes, tone) and may be empty.
+ */
 export const GenerateDesignInput = z.object({
   projectCode: z.string().min(1),
-  intent: z.string().min(1).max(4000),
+  intent: z.string().max(4000).optional(),
 })
 export type GenerateDesignInput = z.infer<typeof GenerateDesignInput>
 
 /**
  * Structured output the `designer` agent must emit at the end of its run:
  * one entry per Figma frame it imported or generated. The sidecar post-run
- * hook parses this and persists each entry as a design_frame row, decoding
- * `screenshotBase64` into the baseline PNG used by the G5 fidelity gate.
+ * hook parses this and persists each entry as a design_frame row, copying the
+ * PNG at `screenshotPath` into the baseline used by the G5 fidelity gate.
+ *
+ * The screenshot travels as a workspace-relative PATH, never inline base64:
+ * the agent curls each frame's PNG (the Figma MCP returns a short-lived URL)
+ * straight to disk, so the output JSON stays in KB. Embedding 9 base64 PNGs
+ * in one block produced a multi-MB payload the model hung emitting.
  */
 export const DesignerFrameOutput = z.object({
   figmaFileKey: z.string().min(1),
   figmaNodeId: z.string().min(1),
   name: z.string().min(1).max(200),
   tokens: DesignTokens.default({}),
-  /** Base64 PNG export of the frame, used as the fidelity baseline. */
-  screenshotBase64: z.string().optional(),
+  /** Workspace-relative path to the PNG the agent saved (fidelity baseline). */
+  screenshotPath: z.string().optional(),
 })
 export type DesignerFrameOutput = z.infer<typeof DesignerFrameOutput>
 

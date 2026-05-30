@@ -86,16 +86,16 @@ export function DesignPanel({ client, projectCode, stories }: DesignPanelProps) 
   }
 
   async function runGenerate() {
-    if (!intent.trim()) {
-      setError('Describe el producto a diseñar')
-      return
-    }
     setBusy(true)
     setError(null)
     setResult(null)
     framesBeforeRunRef.current = frames?.length ?? 0
     try {
-      const { runId } = await client.designFrames.generate({ projectCode, intent: intent.trim() })
+      const trimmed = intent.trim()
+      const { runId } = await client.designFrames.generate({
+        projectCode,
+        ...(trimmed ? { intent: trimmed } : {}),
+      })
       setIntent('')
       setActiveRunId(runId)
     } catch (err) {
@@ -274,11 +274,15 @@ export function DesignPanel({ client, projectCode, stories }: DesignPanelProps) 
         </div>
 
         <div className="rounded-md border border-border bg-bg/30 p-3">
-          <Eyebrow>Generar desde intent</Eyebrow>
+          <Eyebrow>Generar desde las historias</Eyebrow>
+          <div className="text-[11px] text-text-muted mt-1">
+            Diseña una pantalla por cada historia del proyecto. El texto de abajo es opcional:
+            añádelo solo para dar contexto extra (branding, tono).
+          </div>
           <div className="mt-2">
             <textarea
               className="w-full bg-bg border border-border rounded-md px-3 py-2 text-[12px] text-text leading-snug min-h-[64px] focus:outline-none focus:border-brand"
-              placeholder="App de gestión de flota: login, dashboard, detalle de vehículo, perfil. Branding Tuurt."
+              placeholder="(Opcional) Contexto extra: branding Tuurt, tono, referencias visuales…"
               value={intent}
               onChange={(e) => setIntent(e.target.value)}
               disabled={busy || !figmaReady || !!activeRunId}

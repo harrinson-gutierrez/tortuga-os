@@ -72,7 +72,10 @@ MANDATORY before invoking the MCP tools.
 Given a fileKey + nodeId:
 1. get_design_context / get_variable_defs on the node(s) → extract design
    tokens (colors, typography, spacing, radii) as concrete values.
-2. get_screenshot on each frame → a PNG you will base64-encode.
+2. get_screenshot on each frame → it returns a short-lived URL + a curl
+   command. Run that curl with the Bash tool to download the PNG straight to
+   disk (see OUTPUT for the exact path). NEVER set enableBase64Response — you
+   must NOT embed the image inline; you only emit its path.
 3. get_metadata to enumerate child frames if the node is a page.
 
 Each frame you surface becomes one entry in the output JSON.
@@ -86,7 +89,8 @@ Given an intent string:
    ANCHORED to the Tuurt design system: brand accent #f44e5c, the tokens
    in the brandbook. Do not invent off-brand colors.
 2. After creation, get_screenshot + get_variable_defs on the new frames so
-   the output carries the same shape as IMPORT.
+   the output carries the same shape as IMPORT — download each screenshot to
+   disk with curl, exactly as in IMPORT step 2.
 
 =========================================================
   OUTPUT — single fenced JSON block, NOTHING ELSE after it
@@ -96,8 +100,18 @@ Before emitting, for EACH frame call the Figma MCP fully:
 - get_variable_defs → the design-system variables/styles (put them in tokens.variables).
 - get_design_context → per-layer fills, strokes, EFFECTS (drop/inner shadows),
   gradients, typography, corner radii, borders, and the auto-layout.
-- get_screenshot → the PNG baseline.
+- get_screenshot → returns a short-lived URL + curl command. Run the curl
+  with the Bash tool to save the PNG to:
+      03-design/_imports/<nodeId>.png
+  where <nodeId> is the frame's figmaNodeId with every ':' replaced by '-'
+  (e.g. node "10:20" → 03-design/_imports/10-20.png). Create the directory
+  first (mkdir -p 03-design/_imports). Paths are relative to the workspace
+  root given in your prompt. Put that SAME path in the frame's screenshotPath.
 Capture EVERYTHING the MCP exposes. Do NOT summarize or drop shadows/gradients.
+
+CRITICAL: the screenshot is a FILE ON DISK referenced by path. NEVER embed
+base64 image data in the JSON — a block with several inline PNGs is multiple
+MB and the run will hang emitting it. The JSON must stay small (KB).
 
 End your message with EXACTLY one fenced JSON block matching:
 
@@ -130,7 +144,7 @@ End your message with EXACTLY one fenced JSON block matching:
         "layout": { "width": 390, "height": 844,
           "autoLayout": { "direction": "vertical", "gap": 16, "padding": [24, 16, 24, 16] } }
       },
-      "screenshotBase64": "<base64 PNG of the frame, no data: prefix>"
+      "screenshotPath": "03-design/_imports/10-20.png"
     }
   ]
 }
@@ -142,8 +156,8 @@ Rules:
   typography, shadows, borders, radii, spacing, layout, variables. Empty
   arrays are fine for sections the frame genuinely lacks, but NEVER omit a
   shadow/gradient that exists in the design.
-- screenshotBase64 is the fidelity baseline — include it whenever the MCP
-  can export the frame. Omit only if the export genuinely failed.
+- screenshotPath is the fidelity baseline — set it to the file you curled
+  to disk for that frame. Omit only if the export genuinely failed.
 - Concrete values (hex, px, weights), not references. No vague language.`,
 
   'frame-assigner': `=========================================================

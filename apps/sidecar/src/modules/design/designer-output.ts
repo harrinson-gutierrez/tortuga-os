@@ -1,5 +1,5 @@
-import { mkdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { copyFileSync, existsSync, mkdirSync } from 'node:fs'
+import { join, normalize } from 'node:path'
 import type { CoreDeps } from '@tortuga-os/core'
 import { logger } from '../../shared/logger'
 import { workspacePathFor } from '../workspace/use-cases'
@@ -42,19 +42,28 @@ async function resolveContextForRun(deps: CoreDeps, runId: string): Promise<Desi
 }
 
 /**
- * Decode a base64 PNG into `03-design/_frames/<frameId>/baseline.png` and
- * return the workspace-relative path. Returns null only when the agent sent an
- * empty/malformed payload (the frame still persists, just without a baseline);
- * a real filesystem failure throws so the caller can surface it instead of
- * silently producing a frame the G5 gate can never compare against.
+ * Copy the PNG the agent saved (at a workspace-relative `screenshotPath`) into
+ * the canonical baseline `03-design/_frames/<frameId>/baseline.png` and return
+ * its workspace-relative path. The agent curls each screenshot to disk, so we
+ * only move a file here — no multi-MB base64 ever touches the run output.
+ *
+ * Returns null when the agent referenced a path that doesn't exist (frame
+ * still persists, just without a baseline). Throws only on a real filesystem
+ * error so the caller can surface it instead of silently producing a frame the
+ * G5 gate can never compare against. The path is confined to the workspace to
+ * reject traversal (`../`) the agent might emit.
  */
-function persistBaselinePng(workspace: string, frameId: string, base64: string): string | null {
-  const cleaned = base64.replace(/^data:image\/(png|jpeg|jpg);base64,/, '')
-  const buffer = Buffer.from(cleaned, 'base64')
-  if (buffer.byteLength === 0) return null
+function persistBaselinePng(
+  workspace: string,
+  frameId: string,
+  screenshotPath: string,
+): string | null {
+  const srcAbs = normalize(join(workspace, screenshotPath))
+  if (!srcAbs.startsWith(normalize(workspace))) return null
+  if (!existsSync(srcAbs)) return null
   const dir = join(workspace, '03-design', '_frames', frameId)
   mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, 'baseline.png'), buffer)
+  copyFileSync(srcAbs, join(dir, 'baseline.png'))
   return `03-design/_frames/${frameId}/baseline.png`
 }
 
@@ -103,9 +112,12 @@ export async function handleDesignerOutput(
     const prior = existing.find((f) => f.figmaNodeId === frame.figmaNodeId)
     const frameId = prior?.id ?? deps.newId()
     let baselinePath: string | null
-    if (frame.screenshotBase64) {
+    if (frame.screenshotPath) {
       try {
-        baselinePath = persistBaselinePng(ctx.workspace, frameId, frame.screenshotBase64)
+        baselinePath =
+          persistBaselinePng(ctx.workspace, frameId, frame.screenshotPath) ??
+          prior?.baselineScreenshotPath ??
+          null
       } catch (err) {
         baselineFailures++
         logger.warn(

@@ -121,18 +121,71 @@ function buildImportPrompt(args: { figmaFileKey: string; figmaNodeId: string | n
   return lines.join('\n')
 }
 
-function buildGeneratePrompt(args: { intent: string }): string {
-  const lines: string[] = [
-    '# Mode: GENERATE the project design from intent',
-    '',
-    '## Intent',
-    args.intent.trim(),
-    '',
-    'Design the full set of screens in Figma with generate_figma_design /',
-    'use_figma anchored to the Tuurt design system (brand accent #f44e5c,',
-    'tokens from the brandbook). Then get_screenshot + get_variable_defs on',
-    'each generated frame and emit the structured JSON — one entry per frame.',
-  ]
+/** Synthetic stories that are not build stories (design/arch placeholders). */
+function isBuildStory(code: string): boolean {
+  return !code.endsWith('-000') && !code.endsWith('-000-DESIGN')
+}
+
+interface StoryBrief {
+  code: string
+  title: string
+  goal: string
+}
+
+/**
+ * Load the project's build stories (title + goal) so GENERATE can design one
+ * screen per story instead of relying on a hand-typed intent. The screens to
+ * design ARE the stories the quote already defined.
+ */
+async function loadBuildStoriesForProject(
+  deps: CoreDeps,
+  projectId: string,
+): Promise<StoryBrief[]> {
+  const salesPhase = await deps.storage.getSalesPhase(projectId)
+  if (!salesPhase) return []
+  const quote = await deps.storage.getLatestQuoteForSalesPhase(salesPhase.id)
+  if (!quote) return []
+  const stories = await deps.storage.listStoriesForQuote(quote.id)
+  return stories
+    .filter((s) => isBuildStory(s.code))
+    .map((s) => ({ code: s.code, title: s.title, goal: s.goal ?? '' }))
+}
+
+function buildGeneratePrompt(args: { intent: string; stories: StoryBrief[] }): string {
+  const lines: string[] = ['# Mode: GENERATE the project design from the project stories', '']
+
+  if (args.stories.length > 0) {
+    lines.push('## Screens to design (one Figma frame per story)')
+    lines.push(
+      'These are the build stories the quote already defined. Design ONE screen',
+      'for EACH story, named after the story so the frame-assigner can match it back:',
+      '',
+    )
+    for (const s of args.stories) {
+      lines.push(`- [${s.code}] ${s.title}${s.goal ? ` — ${s.goal}` : ''}`)
+    }
+    lines.push('')
+  }
+
+  const intent = args.intent.trim()
+  if (intent) {
+    lines.push('## Extra context from the operator', intent, '')
+  }
+
+  if (args.stories.length === 0 && !intent) {
+    lines.push(
+      'No stories or intent were provided. Design a sensible default screen set',
+      'for the product and name each frame clearly.',
+      '',
+    )
+  }
+
+  lines.push(
+    'Design every screen in Figma with generate_figma_design / use_figma anchored',
+    'to the Tuurt design system (brand accent #f44e5c, tokens from the brandbook).',
+    'Then get_screenshot + get_variable_defs on each generated frame and emit the',
+    'structured JSON — one entry per frame.',
+  )
   return lines.join('\n')
 }
 
@@ -161,7 +214,10 @@ export async function queueDesignerRun(
           figmaFileKey: req.figmaFileKey ?? '',
           figmaNodeId: req.figmaNodeId ?? null,
         })
-      : buildGeneratePrompt({ intent: req.intent ?? '' })
+      : buildGeneratePrompt({
+          intent: req.intent ?? '',
+          stories: await loadBuildStoriesForProject(deps, resolved.projectId),
+        })
 
   const queued = await useCases.agentRuns.queueAgentRun(deps, {
     taskId: resolved.taskId,
