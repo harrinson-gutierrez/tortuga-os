@@ -28,7 +28,30 @@ export const CoworkerQuestion = z.object({
 })
 export type CoworkerQuestion = z.infer<typeof CoworkerQuestion>
 
-const COWORKER_QUESTION_BLOCK = /```(?:json|JSON)?\s*([\s\S]*?)```/g
+const FENCE = '```'
+
+/**
+ * Split out the bodies of fenced code blocks by scanning for ``` fences with
+ * indexOf. Linear-time and backtracking-free — deliberately not a regex, to
+ * avoid ReDoS on agent-controlled text with long whitespace runs.
+ */
+function fencedBlocks(text: string): string[] {
+  const blocks: string[] = []
+  let from = 0
+  while (true) {
+    const open = text.indexOf(FENCE, from)
+    if (open < 0) break
+    const close = text.indexOf(FENCE, open + FENCE.length)
+    if (close < 0) break
+    let body = text.slice(open + FENCE.length, close)
+    // Drop an optional language tag on the opening fence's first line.
+    const nl = body.indexOf('\n')
+    if (nl >= 0 && !body.slice(0, nl).includes('{')) body = body.slice(nl + 1)
+    blocks.push(body)
+    from = close + FENCE.length
+  }
+  return blocks
+}
 
 /**
  * Extract the coworker question from an agent turn's text, if it ended with
@@ -37,10 +60,7 @@ const COWORKER_QUESTION_BLOCK = /```(?:json|JSON)?\s*([\s\S]*?)```/g
  */
 export function parseCoworkerQuestion(content: string): CoworkerQuestion | null {
   if (!content || !content.includes('coworkerQuestion')) return null
-  const blocks: string[] = []
-  for (const m of content.matchAll(COWORKER_QUESTION_BLOCK)) {
-    if (m[1]) blocks.push(m[1])
-  }
+  const blocks = fencedBlocks(content)
   for (let i = blocks.length - 1; i >= 0; i--) {
     try {
       const parsed = JSON.parse(blocks[i]!.trim()) as { coworkerQuestion?: unknown }
