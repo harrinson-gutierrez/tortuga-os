@@ -103,6 +103,7 @@ export function aTask(overrides: Partial<TaskRow> = {}): TaskRow {
     ownerRole: 'dev',
     assignee: null,
     status: 'pending',
+    executionMode: 'coworker',
     currentIteration: 1,
     estimatedHoursMin: 0,
     actualHoursMin: 0,

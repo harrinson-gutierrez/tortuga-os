@@ -8,6 +8,8 @@ import {
 } from '@tortuga-os/api-server'
 import { Hono } from 'hono'
 import { agentRunsRouter } from './modules/agent-runs/routes'
+import { coworkerRouter } from './modules/coworker/routes'
+import { designRouter } from './modules/design/routes'
 import { discoveryRouter } from './modules/discovery/routes'
 import { gatesRunRouter } from './modules/gates/routes'
 import { previewRouter } from './modules/preview/routes'
@@ -18,7 +20,7 @@ import { troubleshootRouter } from './modules/troubleshoot/routes'
 import { workspaceRouter } from './modules/workspace/routes'
 import { coreDeps } from './shared/core-deps'
 import { loadHandshakeToken } from './shared/handshake'
-import { logger } from './shared/logger'
+import { logFilePath, logger } from './shared/logger'
 
 export function buildApp() {
   const app = new Hono()
@@ -37,7 +39,9 @@ export function buildApp() {
     }),
   )
 
-  app.get('/health', (c) => c.json({ ok: true, name: 'tortuga-os-sidecar', ts: Date.now() }))
+  app.get('/health', (c) =>
+    c.json({ ok: true, name: 'tortuga-os-sidecar', ts: Date.now(), logFile: logFilePath }),
+  )
 
   // Domain surface from api-server (all use-case-backed endpoints).
   app.route('/api', buildDomainRouter(coreDeps()))
@@ -55,6 +59,10 @@ export function buildApp() {
   app.route('/api/gates', gatesRunRouter)
   // Discovery chat with the sales/discovery agent (calls Anthropic SDK).
   app.route('/api/discovery', discoveryRouter)
+  // Coworker mode: turn-based chat that drives a build task. Each turn queues
+  // a real dev agent run in the workspace (so files persist) and polls it to
+  // completion. Gates/QA stay the authority for "done".
+  app.route('/api/coworker', coworkerRouter)
   // Deterministic project scaffolding from JSON templates (no LLM).
   app.route('/api/scaffold', scaffoldRouter)
   // Skill packs catalog + per-project enable/disable toggles. The pack
@@ -64,6 +72,10 @@ export function buildApp() {
   // Runtime error troubleshooter: paste/hook/logcat errors → structured
   // diagnosis → apply fix → run integration test → operator confirm.
   app.route('/api/troubleshoot', troubleshootRouter)
+  // F3 design: import a Figma file or generate one from intent. Both queue
+  // a `designer` agent run that talks to the Figma MCP; the worker post-run
+  // hook persists the resulting frames + baseline screenshots.
+  app.route('/api/design', designRouter)
 
   if (process.env.TORTUGA_HANDSHAKE_TOKEN) {
     logger.info('Sidecar handshake: ENABLED (TORTUGA_HANDSHAKE_TOKEN is set)')

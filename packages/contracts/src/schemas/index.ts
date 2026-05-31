@@ -1,5 +1,7 @@
 export * from './agent-runs'
 export * from './clients'
+export * from './coworker'
+export * from './design-frames'
 export * from './discovery'
 export * from './evidence'
 export * from './expenses'

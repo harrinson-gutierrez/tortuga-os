@@ -25,6 +25,8 @@ import type {
   PhaseType,
   ProjectEnvironment,
   Role,
+  TaskCoworkerPhase,
+  TaskExecutionMode,
   TaskStatus,
   TaskType,
   TroubleshootStatus,
@@ -32,6 +34,7 @@ import type {
 import type {
   AgentRunRow,
   ClientRow,
+  DesignFrameRow,
   DiscoveryConversationRow,
   DiscoveryMessageRow,
   EvidenceRow,
@@ -57,6 +60,8 @@ import type {
   StepAckKind,
   StepAckRow,
   StoryRow,
+  TaskConversationRow,
+  TaskMessageRow,
   TaskRow,
   TroubleshootReportRow,
   WorkEntryRow,
@@ -193,6 +198,40 @@ export interface PatchKitTemplateArgs {
     description: string | null
     stack: string
     snapshotJson: string
+  }>
+  now: number
+}
+
+export interface AgentRunCostTotals {
+  costCents: number
+  tokensIn: number
+  tokensOut: number
+  runCount: number
+}
+
+export interface CreateDesignFrameArgs {
+  id: string
+  projectId: string
+  storyId: string | null
+  figmaFileKey: string
+  figmaNodeId: string
+  name: string
+  tokensJson: string
+  baselineScreenshotPath: string | null
+  status: 'imported' | 'generated' | 'approved'
+  fidelityPct: number | null
+  now: number
+}
+
+export interface PatchDesignFrameArgs {
+  id: string
+  patch: Partial<{
+    storyId: string | null
+    name: string
+    tokensJson: string
+    baselineScreenshotPath: string | null
+    status: 'imported' | 'generated' | 'approved'
+    fidelityPct: number | null
   }>
   now: number
 }
@@ -551,6 +590,16 @@ export interface Storage {
   closeAgentRunSucceeded(args: CloseAgentRunSucceededArgs): Promise<AgentRunRow>
   /** Persists a failed/cancelled outcome without creating Evidence/WorkEntry. */
   closeAgentRunUnsuccessful(args: CloseAgentRunUnsuccessfulArgs): Promise<AgentRunRow>
+  /**
+   * Degrades an already-closed run to `failed` with a reason. Used when the
+   * agent itself succeeded but a post-run hook (parse/persist) failed, so the
+   * operator sees WHY instead of a silent success that produced nothing.
+   */
+  markAgentRunFailed(args: {
+    runId: string
+    errorMessage: string
+    now: number
+  }): Promise<AgentRunRow>
 
   getDiscoveryConversationById(id: string): Promise<DiscoveryConversationRow | null>
   getActiveDiscoveryConversationForProject(
@@ -598,6 +647,58 @@ export interface Storage {
     now: number
   }): Promise<DiscoveryConversationRow>
 
+  // ── coworker mode (turn-based task conversation) ────────────────────
+  getTaskConversationById(id: string): Promise<TaskConversationRow | null>
+  getActiveTaskConversationForTask(taskId: string): Promise<TaskConversationRow | null>
+  createTaskConversation(args: {
+    id: string
+    taskId: string
+    provider: 'anthropic-sdk' | 'claude-cli'
+    now: number
+  }): Promise<TaskConversationRow>
+  listTaskMessages(conversationId: string): Promise<TaskMessageRow[]>
+  appendTaskMessage(args: {
+    id: string
+    conversationId: string
+    role: 'user' | 'agent'
+    content: string
+    agentRunId?: string | null
+    phase?: TaskCoworkerPhase | null
+    model?: string | null
+    tokensIn?: number
+    tokensOut?: number
+    costCents?: number
+    now: number
+  }): Promise<TaskMessageRow>
+  /** Find the message that owns a given agent run (the coworker turn placeholder). */
+  getTaskMessageByAgentRunId(agentRunId: string): Promise<TaskMessageRow | null>
+  /** Complete an agent-turn placeholder once its run finishes (worker post-hook). */
+  updateTaskMessage(args: {
+    id: string
+    content?: string
+    model?: string | null
+    tokensIn?: number
+    tokensOut?: number
+    costCents?: number
+    now: number
+  }): Promise<TaskMessageRow>
+  setTaskConversationPhase(args: {
+    id: string
+    phase: TaskCoworkerPhase
+    now: number
+  }): Promise<TaskConversationRow>
+  setTaskConversationCliSessionId(args: {
+    id: string
+    cliSessionId: string
+    now: number
+  }): Promise<TaskConversationRow>
+  archiveTaskConversation(args: { id: string; now: number }): Promise<TaskConversationRow>
+  setTaskExecutionMode(args: {
+    taskId: string
+    mode: TaskExecutionMode
+    now: number
+  }): Promise<TaskRow>
+
   // ── quote modules (parametric templates per project) ────────────────
   listQuoteModulesForProject(projectId: string): Promise<QuoteModuleRow[]>
   getQuoteModuleById(id: string): Promise<QuoteModuleRow | null>
@@ -629,6 +730,13 @@ export interface Storage {
   patchKitTemplate(args: PatchKitTemplateArgs): Promise<KitTemplateRow>
   softDeleteKitTemplate(id: string, now: number): Promise<void>
 
+  listDesignFramesForProject(projectId: string): Promise<DesignFrameRow[]>
+  listDesignFramesForStory(storyId: string): Promise<DesignFrameRow[]>
+  getDesignFrameById(id: string): Promise<DesignFrameRow | null>
+  createDesignFrame(args: CreateDesignFrameArgs): Promise<DesignFrameRow>
+  patchDesignFrame(args: PatchDesignFrameArgs): Promise<DesignFrameRow>
+  softDeleteDesignFrame(id: string, now: number): Promise<void>
+
   listExpensesForProject(projectId: string): Promise<ExpenseRow[]>
   getExpenseById(id: string): Promise<ExpenseRow | null>
   createExpense(args: CreateExpenseArgs): Promise<ExpenseRow>
@@ -636,6 +744,8 @@ export interface Storage {
   softDeleteExpense(id: string, now: number): Promise<void>
   /** Sum of (non-soft-deleted) expenses in cents for one project. */
   sumExpensesForProject(projectId: string): Promise<number>
+  /** Aggregate AI cost + tokens across all agent runs of one project. */
+  sumAgentRunCostForProject(projectId: string): Promise<AgentRunCostTotals>
 
   listSecretsForProject(projectId: string): Promise<SecretRow[]>
   getSecretById(id: string): Promise<SecretRow | null>
@@ -697,8 +807,10 @@ export interface UpsertStepAckArgs {
 
 export interface CreateAgentRunArgs {
   id: string
-  taskId: string
-  iterationId: string
+  // Build runs pass taskId + iterationId; project-scoped runs pass projectId.
+  taskId?: string | null
+  iterationId?: string | null
+  projectId?: string | null
   agentKind: AgentKind
   provider: AgentProvider
   model: string

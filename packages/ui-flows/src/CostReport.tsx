@@ -20,6 +20,12 @@ function fmtHours(minutes: number): string {
   return `${(minutes / 60).toFixed(1)}h`
 }
 
+function fmtTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
+  return String(n)
+}
+
 export function CostReport({ client, projectCode, refreshKey = 0 }: CostReportProps) {
   const { data, error, loading } = useAsyncData(
     () => client.reports.projectCost(projectCode),
@@ -56,6 +62,20 @@ export function CostReport({ client, projectCode, refreshKey = 0 }: CostReportPr
           label="Client-initiated"
           value={fmtMoney(data.clientReworkCostCents)}
           tone="warning"
+        />
+      </div>
+
+      <div className="grid grid-cols-4 gap-4 mt-4">
+        <Stat label="Gastos" value={fmtMoney(data.expensesCents)} />
+        <Stat
+          label="Consumo IA"
+          value={fmtMoney(data.aiCostCents)}
+          sub={`${data.aiRunCount} runs · ${fmtTokens(data.aiTokensIn + data.aiTokensOut)} tok`}
+        />
+        <Stat
+          label="Margen"
+          value={fmtMoney(data.marginCents)}
+          tone={data.marginCents < 0 ? 'danger' : 'turtle'}
         />
       </div>
 
@@ -109,19 +129,28 @@ function Stat({
   label,
   value,
   tone,
+  sub,
 }: {
   label: string
   value: string
-  tone?: 'danger' | 'warning'
+  tone?: 'danger' | 'warning' | 'turtle'
+  sub?: string
 }) {
   const colorClass =
-    tone === 'danger' ? 'text-danger' : tone === 'warning' ? 'text-warning' : 'text-text'
+    tone === 'danger'
+      ? 'text-danger'
+      : tone === 'warning'
+        ? 'text-warning'
+        : tone === 'turtle'
+          ? 'text-turtle'
+          : 'text-text'
   return (
     <div>
       <Eyebrow>{label}</Eyebrow>
       <div className={`font-display font-medium text-[20px] tracking-tighter-2 mt-1 ${colorClass}`}>
         {value}
       </div>
+      {sub && <div className="text-[10px] font-mono text-text-dim mt-0.5">{sub}</div>}
     </div>
   )
 }

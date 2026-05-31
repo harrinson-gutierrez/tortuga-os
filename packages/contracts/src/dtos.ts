@@ -23,9 +23,13 @@ import type {
   ReworkRootCause,
   Role,
   StoryStatus,
+  TaskConversationStatus,
+  TaskCoworkerPhase,
+  TaskExecutionMode,
   TaskStatus,
   TaskType,
 } from './enums'
+import type { DesignFrameStatus, DesignTokens } from './schemas/design-frames'
 import type { InboxKind } from './schemas/inbox'
 import type { ProjectEnvironment } from './schemas/project-envs'
 
@@ -163,6 +167,7 @@ export interface TaskDTO {
   ownerRole: Role
   assignee: string | null
   status: TaskStatus
+  executionMode: TaskExecutionMode
   currentIteration: number
   estimatedHoursMin: number
   actualHoursMin: number
@@ -336,14 +341,24 @@ export interface ProjectCostReportDTO {
   spentCents: number
   reworkCostCents: number
   clientReworkCostCents: number
+  /** Manually-entered expenses (contractors, SaaS, hosting…). */
+  expensesCents: number
+  /** AI/agent spend aggregated across all runs of the project. */
+  aiCostCents: number
+  aiTokensIn: number
+  aiTokensOut: number
+  aiRunCount: number
+  /** budget − labor spent − expenses − AI cost. Can be negative. */
+  marginCents: number
   byPhase: PhaseCostBreakdownDTO[]
   generatedAt: number
 }
 
 export interface AgentRunDTO {
   id: string
-  taskId: string
-  iterationId: string
+  taskId: string | null
+  iterationId: string | null
+  projectId: string | null
   agentKind: AgentKind
   provider: AgentProvider
   model: string
@@ -400,6 +415,39 @@ export interface DiscoveryMessageDTO {
 export interface DiscoveryConversationWithMessagesDTO {
   conversation: DiscoveryConversationDTO
   messages: DiscoveryMessageDTO[]
+}
+
+/** Coworker mode: turn-based conversation that drives a build task. */
+export interface TaskConversationDTO {
+  id: string
+  taskId: string
+  status: TaskConversationStatus
+  provider: DiscoveryProvider
+  cliSessionId: string | null
+  phase: TaskCoworkerPhase
+  createdAt: number
+  updatedAt: number
+}
+
+export interface TaskMessageDTO {
+  id: string
+  conversationId: string
+  role: DiscoveryMessageRole
+  content: string
+  /** The agent run this turn produced (null for user messages). */
+  agentRunId: string | null
+  phase: TaskCoworkerPhase | null
+  model: string | null
+  tokensIn: number
+  tokensOut: number
+  costCents: number
+  createdAt: number
+  updatedAt: number
+}
+
+export interface TaskConversationWithMessagesDTO {
+  conversation: TaskConversationDTO
+  messages: TaskMessageDTO[]
 }
 
 export interface QuoteModuleDTO {
@@ -547,6 +595,21 @@ export interface ProjectMcpDTO {
   url: string | null
   headers: Record<string, string>
   presetId: string | null
+  createdAt: number
+  updatedAt: number
+}
+
+export interface DesignFrameDTO {
+  id: string
+  projectId: string
+  storyId: string | null
+  figmaFileKey: string
+  figmaNodeId: string
+  name: string
+  tokens: DesignTokens
+  baselineScreenshotPath: string | null
+  status: DesignFrameStatus
+  fidelityPct: number | null
   createdAt: number
   updatedAt: number
 }

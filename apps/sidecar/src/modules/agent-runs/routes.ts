@@ -11,95 +11,22 @@ import { Hono } from 'hono'
 import { coreDeps, unwrap } from '../../shared/core-deps'
 import { NotFoundError } from '../../shared/errors'
 import { workspacePathFor } from '../workspace/use-cases'
+import { buildUserPrompt } from './build-prompt'
 import { cancelInFlightRun } from './worker'
 
-/**
- * Assembles the user-facing prompt for an agent: task code, story code,
- * goal, owner role and any extra prompt the operator typed.
- */
-async function buildUserPrompt(taskId: string, extraPrompt: string | undefined): Promise<string> {
-  const deps = coreDeps()
-  const task = await deps.storage.getTaskById(taskId)
-  if (!task) throw new Error(`task ${taskId} not found`)
-  const story = await deps.storage.getStoryById(task.storyId)
-  const lines: string[] = []
-  lines.push('# Tortuga OS task brief')
-  lines.push('')
-  lines.push(`Task: **${task.code}** (type: ${task.type}, owner: ${task.ownerRole})`)
-  if (story) {
-    lines.push(`Story: **${story.code}** — ${story.title}`)
-    lines.push(`Goal: ${story.goal}`)
-    if (story.acceptanceCriteriaJson && story.acceptanceCriteriaJson !== '[]') {
-      lines.push('')
-      lines.push('## Acceptance criteria (JSON)')
-      lines.push('```json')
-      lines.push(story.acceptanceCriteriaJson)
-      lines.push('```')
-    }
-    // For the arch/tech_lead T0 task we also dump the list of pending
-    // features (stored in inputsJson as `pendingStories`) so the agent
-    // knows what the project as a whole is about.
-    if (
-      (task.type === 'arch' || task.ownerRole === 'tech_lead') &&
-      story.inputsJson &&
-      story.inputsJson !== '{}'
-    ) {
-      lines.push('')
-      lines.push('## Features de la cotización (informativo)')
-      try {
-        const inputs = JSON.parse(story.inputsJson) as { pendingStories?: string }
-        if (inputs.pendingStories) lines.push(inputs.pendingStories)
-      } catch {
-        /* ignore */
-      }
-    }
-  }
-
-  // Inject ARCHITECTURE.md into the brief for implementation tasks so the
-  // dev agent inherits the architecture decisions made by the arch T0.
-  if (task.type !== 'arch' && task.ownerRole !== 'tech_lead' && story) {
-    const archContent = await readArchitectureForStory(story.id)
-    if (archContent) {
-      lines.push('')
-      lines.push('## ARCHITECTURE.md (fuente de verdad — síguelo)')
-      lines.push(archContent)
-    }
-  }
-
-  lines.push('')
-  lines.push(`Iteration: n=${task.currentIteration}`)
-  if (extraPrompt?.trim()) {
-    lines.push('')
-    lines.push('## Operator instructions')
-    lines.push(extraPrompt.trim())
-  }
-  return lines.join('\n')
-}
-
-async function readArchitectureForStory(storyId: string): Promise<string | null> {
-  const deps = coreDeps()
-  try {
-    const story = await deps.storage.getStoryById(storyId)
-    if (!story) return null
-    const quote = await deps.storage.getQuoteById(story.quoteId)
-    if (!quote) return null
-    const phase = await deps.storage.getPhaseById(quote.phaseId)
-    if (!phase) return null
-    const project = await deps.storage.getProjectById(phase.projectId)
-    if (!project) return null
-    const workspace = project.workspacePath ?? workspacePathFor(project.code)
-    const archPath = join(workspace, 'ARCHITECTURE.md')
-    if (!existsSync(archPath)) return null
-    return readFileSync(archPath, 'utf-8')
-  } catch {
-    return null
-  }
-}
+// buildUserPrompt lives in ./build-prompt so the coworker turn loop can reuse it.
 
 async function resolveWorkspaceForRun(runId: string): Promise<string | null> {
   const deps = coreDeps()
   const run = await deps.storage.getAgentRunById(runId)
   if (!run) return null
+  // Project-scoped runs (design/frame-assigner) resolve straight from projectId.
+  if (!run.taskId) {
+    if (!run.projectId) return null
+    const project = await deps.storage.getProjectById(run.projectId)
+    if (!project) return null
+    return project.workspacePath ?? workspacePathFor(project.code)
+  }
   const task = await deps.storage.getTaskById(run.taskId)
   if (!task) return null
   const story = await deps.storage.getStoryById(task.storyId)

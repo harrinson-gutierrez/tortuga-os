@@ -8,6 +8,8 @@
 import type {
   AgentRunDTO,
   ClientDTO,
+  DesignFrameDTO,
+  DesignTokens,
   DiscoveryConversationDTO,
   DiscoveryMessageDTO,
   DiscoveryStoryDraftDTO,
@@ -30,17 +32,21 @@ import type {
   RequiredOperatorAction,
   SecretDTO,
   StoryDTO,
+  TaskConversationDTO,
   TaskDTO,
+  TaskMessageDTO,
   TroubleshootReportDTO,
   WorkEntryDTO,
 } from '@tortuga-os/contracts'
 import {
+  DesignTokens as DesignTokensSchema,
   RequiredOperatorAction as RequiredOperatorActionSchema,
   TroubleshootDiagnosis,
 } from '@tortuga-os/contracts'
 import type {
   AgentRunRow,
   ClientRow,
+  DesignFrameRow,
   DiscoveryConversationRow,
   DiscoveryMessageRow,
   EvidenceRow,
@@ -60,6 +66,8 @@ import type {
   QuoteRow,
   SecretRow,
   StoryRow,
+  TaskConversationRow,
+  TaskMessageRow,
   TaskRow,
   TroubleshootReportRow,
   WorkEntryRow,
@@ -171,6 +179,7 @@ export const taskDTO = (t: TaskRow): TaskDTO => ({
   ownerRole: t.ownerRole,
   assignee: t.assignee,
   status: t.status,
+  executionMode: t.executionMode,
   currentIteration: t.currentIteration,
   estimatedHoursMin: t.estimatedHoursMin,
   actualHoursMin: t.actualHoursMin,
@@ -235,6 +244,7 @@ export const agentRunDTO = (a: AgentRunRow): AgentRunDTO => ({
   id: a.id,
   taskId: a.taskId,
   iterationId: a.iterationId,
+  projectId: a.projectId,
   agentKind: a.agentKind,
   provider: a.provider,
   model: a.model,
@@ -284,6 +294,32 @@ export const discoveryMessageDTO = (m: DiscoveryMessageRow): DiscoveryMessageDTO
   conversationId: m.conversationId,
   role: m.role,
   content: m.content,
+  model: m.model,
+  tokensIn: m.tokensIn,
+  tokensOut: m.tokensOut,
+  costCents: m.costCents,
+  createdAt: m.createdAt,
+  updatedAt: m.updatedAt,
+})
+
+export const taskConversationDTO = (c: TaskConversationRow): TaskConversationDTO => ({
+  id: c.id,
+  taskId: c.taskId,
+  status: c.status,
+  provider: c.provider,
+  cliSessionId: c.cliSessionId,
+  phase: c.phase,
+  createdAt: c.createdAt,
+  updatedAt: c.updatedAt,
+})
+
+export const taskMessageDTO = (m: TaskMessageRow): TaskMessageDTO => ({
+  id: m.id,
+  conversationId: m.conversationId,
+  role: m.role,
+  content: m.content,
+  agentRunId: m.agentRunId,
+  phase: m.phase,
   model: m.model,
   tokensIn: m.tokensIn,
   tokensOut: m.tokensOut,
@@ -383,6 +419,38 @@ export const kitTemplateDTO = (k: KitTemplateRow): KitTemplateDTO => ({
   })(),
   createdAt: k.createdAt,
   updatedAt: k.updatedAt,
+})
+
+/**
+ * Parse tokens_json through the DesignTokens schema so the array sections
+ * (colors/gradients/typography/shadows/borders) always come back as arrays
+ * (their zod defaults), even for legacy rows or partial JSON. Falls back to
+ * a fully-defaulted empty spec on parse failure.
+ */
+function parseDesignTokens(raw: string | null | undefined): DesignTokens {
+  let parsed: unknown = {}
+  try {
+    if (raw) parsed = JSON.parse(raw)
+  } catch {
+    parsed = {}
+  }
+  const result = DesignTokensSchema.safeParse(parsed)
+  return result.success ? result.data : DesignTokensSchema.parse({})
+}
+
+export const designFrameDTO = (d: DesignFrameRow): DesignFrameDTO => ({
+  id: d.id,
+  projectId: d.projectId,
+  storyId: d.storyId,
+  figmaFileKey: d.figmaFileKey,
+  figmaNodeId: d.figmaNodeId,
+  name: d.name,
+  tokens: parseDesignTokens(d.tokensJson),
+  baselineScreenshotPath: d.baselineScreenshotPath,
+  status: d.status,
+  fidelityPct: d.fidelityPct,
+  createdAt: d.createdAt,
+  updatedAt: d.updatedAt,
 })
 
 export const expenseDTO = (e: ExpenseRow): ExpenseDTO => ({

@@ -22,6 +22,7 @@ import type {
   CreateStoryInput,
   CreateTaskInput,
   CreateTroubleshootInput,
+  DesignFrameDTO,
   DiscoveryConversationWithMessagesDTO,
   DiscoveryMessageDTO,
   DiscoveryStoryDraftDTO,
@@ -29,6 +30,8 @@ import type {
   ExpenseDTO,
   GateDTO,
   GateType,
+  GenerateDesignInput,
+  ImportDesignInput,
   InboxItemDTO,
   InstantiateKitResult,
   IterationDTO,
@@ -36,6 +39,7 @@ import type {
   LogWorkEntryInput,
   MarkActionDoneInput,
   PatchClientInput,
+  PatchDesignFrameInput,
   PatchExpenseInput,
   PatchKitTemplateInput,
   PatchPersonInput,
@@ -70,7 +74,11 @@ import type {
   SecretDTO,
   StepAckDTO,
   StoryDTO,
+  TaskConversationWithMessagesDTO,
+  TaskCoworkerPhase,
   TaskDTO,
+  TaskExecutionMode,
+  TaskMessageDTO,
   TroubleshootReportDTO,
   UpsertStepAckInput,
   WorkEntryDTO,
@@ -167,6 +175,8 @@ export function createApiClient(config: ApiClientConfig) {
       listIterations: (id: string) =>
         request<IterationDTO[]>(config, 'GET', `/api/tasks/${id}/iterations`),
       getIteration: (id: string) => request<IterationDTO>(config, 'GET', `/api/iterations/${id}`),
+      setExecutionMode: (id: string, mode: TaskExecutionMode) =>
+        request<TaskDTO>(config, 'POST', `/api/coworker/tasks/${id}/execution-mode`, { mode }),
     },
 
     gates: {
@@ -316,6 +326,66 @@ export function createApiClient(config: ApiClientConfig) {
           config,
           'POST',
           `/api/discovery/conversations/${conversationId}/approve`,
+        ),
+    },
+
+    coworker: {
+      getOrStart: (taskId: string, provider: 'anthropic-sdk' | 'claude-cli' = 'claude-cli') =>
+        request<TaskConversationWithMessagesDTO>(
+          config,
+          'GET',
+          `/api/coworker/tasks/${encodeURIComponent(taskId)}/conversation?provider=${provider}`,
+        ),
+      load: (conversationId: string) =>
+        request<TaskConversationWithMessagesDTO>(
+          config,
+          'GET',
+          `/api/coworker/conversations/${conversationId}`,
+        ),
+      sendMessage: (conversationId: string, content: string) =>
+        request<{ userMessage: TaskMessageDTO; agentMessage: TaskMessageDTO; runId: string }>(
+          config,
+          'POST',
+          `/api/coworker/conversations/${conversationId}/messages`,
+          { content },
+        ),
+      sendMessageStream: (
+        conversationId: string,
+        content: string,
+        callbacks: {
+          onUserSaved?: (m: TaskMessageDTO) => void
+          onRunQueued?: (runId: string) => void
+          onDelta?: (text: string) => void
+          onDone?: (agentMessage: TaskMessageDTO, runId: string) => void
+          onError?: (message: string) => void
+        },
+        signal?: AbortSignal,
+      ) =>
+        streamSSE<
+          | { type: 'user-saved'; message: TaskMessageDTO }
+          | { type: 'run-queued'; runId: string }
+          | { type: 'delta'; text: string }
+          | { type: 'done'; agentMessage: TaskMessageDTO; runId: string }
+          | { type: 'error'; message: string }
+        >(
+          config,
+          `/api/coworker/conversations/${conversationId}/messages/stream`,
+          { content },
+          (ev) => {
+            if (ev.type === 'user-saved') callbacks.onUserSaved?.(ev.message)
+            else if (ev.type === 'run-queued') callbacks.onRunQueued?.(ev.runId)
+            else if (ev.type === 'delta') callbacks.onDelta?.(ev.text)
+            else if (ev.type === 'done') callbacks.onDone?.(ev.agentMessage, ev.runId)
+            else if (ev.type === 'error') callbacks.onError?.(ev.message)
+          },
+          signal,
+        ),
+      setPhase: (conversationId: string, phase: TaskCoworkerPhase) =>
+        request<TaskConversationWithMessagesDTO>(
+          config,
+          'POST',
+          `/api/coworker/conversations/${conversationId}/phase`,
+          { phase },
         ),
     },
 
@@ -504,6 +574,13 @@ export function createApiClient(config: ApiClientConfig) {
           'GET',
           `/api/workspace/${encodeURIComponent(projectCode)}/file?path=${encodeURIComponent(path)}`,
         ),
+      /** Absolute URL to the raw bytes of a workspace file (for <img> src).
+       *  Carries the handshake token in the query like screenshotUrl. */
+      rawUrl: (projectCode: string, path: string) => {
+        const base = `${config.baseUrl}/api/workspace/${encodeURIComponent(projectCode)}/raw?path=${encodeURIComponent(path)}`
+        if (!config.secret) return base
+        return `${base}&_secret=${encodeURIComponent(config.secret)}`
+      },
       ensure: (projectCode: string) =>
         request<{ projectCode: string; root: string }>(
           config,
@@ -630,6 +707,55 @@ export function createApiClient(config: ApiClientConfig) {
         request<InstantiateKitResult>(config, 'POST', `/api/kit-templates/${id}/instantiate`, {
           projectCode,
         }),
+    },
+
+    designFrames: {
+      listForProject: (projectCode: string) =>
+        request<DesignFrameDTO[]>(
+          config,
+          'GET',
+          `/api/design-frames/project/${encodeURIComponent(projectCode)}`,
+        ),
+      listForStory: (storyId: string) =>
+        request<DesignFrameDTO[]>(
+          config,
+          'GET',
+          `/api/design-frames/story/${encodeURIComponent(storyId)}`,
+        ),
+      get: (id: string) => request<DesignFrameDTO>(config, 'GET', `/api/design-frames/${id}`),
+      patch: (id: string, input: PatchDesignFrameInput) =>
+        request<DesignFrameDTO>(config, 'PATCH', `/api/design-frames/${id}`, input),
+      remove: (id: string) => request<{ ok: true }>(config, 'DELETE', `/api/design-frames/${id}`),
+      // Import/generate are handled by the sidecar `design` module: they
+      // queue a `designer` agent run (project-level) that talks to the Figma MCP.
+      import: (input: ImportDesignInput) =>
+        request<{ runId: string; projectCode: string }>(
+          config,
+          'POST',
+          '/api/design/import',
+          input,
+        ),
+      generate: (input: GenerateDesignInput) =>
+        request<{ runId: string; projectCode: string }>(
+          config,
+          'POST',
+          '/api/design/generate',
+          input,
+        ),
+      // Visual discovery: queue a designer run that proposes 2-3 style
+      // directions (sample frames) instead of every per-story screen.
+      exploreStyle: (input: GenerateDesignInput) =>
+        request<{ runId: string; projectCode: string }>(
+          config,
+          'POST',
+          '/api/design/explore-style',
+          input,
+        ),
+      // Assign or unassign a pooled frame to a build story.
+      assign: (frameId: string, storyId: string | null) =>
+        request<DesignFrameDTO>(config, 'PATCH', `/api/design-frames/${frameId}`, { storyId }),
+      approve: (frameId: string) =>
+        request<DesignFrameDTO>(config, 'POST', `/api/design/${frameId}/approve`, {}),
     },
 
     expenses: {

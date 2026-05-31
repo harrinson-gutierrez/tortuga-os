@@ -147,6 +147,11 @@ export class ClaudeCliRunner implements AgentRunner {
       '--output-format',
       'stream-json',
       '--verbose',
+      // Stream the model's answer token-by-token (natural live output) instead
+      // of receiving it as one block in the final `assistant` event. Each delta
+      // also pings the stall watchdog, so a long final generation (e.g. the
+      // import JSON) is never killed as a false "hang".
+      '--include-partial-messages',
       // Session id: when the worker passes a deterministic id (same id
       // across roles of a single phase) the CLI's prompt cache survives
       // across runs, cutting input tokens dramatically. When omitted we
@@ -256,8 +261,35 @@ export class ClaudeCliRunner implements AgentRunner {
     // versus what was rejected/permissions-denied.
     const pendingToolCalls = new Map<string, { name: string; target: string | null }>()
 
+    // Text already streamed to the UI via partial-message deltas for the
+    // current assistant turn. With --include-partial-messages the CLI emits
+    // the answer token-by-token (natural, live stream) AND a final `assistant`
+    // event carrying the same complete text — we must not emit it twice, so we
+    // track what the deltas already delivered and skip the matching tail.
+    let streamedText = ''
+
     function handleEvent(event: Record<string, unknown>): void {
       const type = event.type as string | undefined
+      // Partial message deltas: the live token stream. Emitting these makes
+      // the output flow naturally instead of arriving in one block at the end,
+      // and every delta refreshes the stall watchdog so a long final answer
+      // (composing the import JSON) is never mistaken for a hang.
+      if (type === 'stream_event') {
+        const inner = event.event as
+          | { type?: string; delta?: { type?: string; text?: string } }
+          | undefined
+        if (inner?.type === 'content_block_delta' && inner.delta?.type === 'text_delta') {
+          const text = inner.delta.text
+          if (typeof text === 'string' && text.length > 0) {
+            outputBuf += text
+            streamedText += text
+            callbacks.onChunk?.(text)
+            lastOkAt = Date.now()
+            consecutiveFailed = 0
+          }
+        }
+        return
+      }
       if (type === 'assistant') {
         const msg = event.message as
           | {
@@ -272,8 +304,22 @@ export class ClaudeCliRunner implements AgentRunner {
           | undefined
         for (const part of msg?.content ?? []) {
           if (part.type === 'text' && typeof part.text === 'string') {
-            outputBuf += part.text
-            callbacks.onChunk?.(part.text)
+            // Fallback for when partial messages are unavailable: if the
+            // deltas already streamed this text, skip it to avoid duplicating
+            // the whole answer; otherwise emit it whole. Model text either way
+            // is proof the agent is alive, so it refreshes the watchdog.
+            if (part.text !== streamedText) {
+              const tail =
+                streamedText && part.text.startsWith(streamedText)
+                  ? part.text.slice(streamedText.length)
+                  : part.text
+              if (tail.length > 0) {
+                outputBuf += tail
+                callbacks.onChunk?.(tail)
+              }
+            }
+            lastOkAt = Date.now()
+            consecutiveFailed = 0
           } else if (part.type === 'tool_use' && typeof part.name === 'string') {
             // Stash the call. We emit a marker only after the matching
             // tool_result arrives so success/failure is visible.
@@ -286,6 +332,8 @@ export class ClaudeCliRunner implements AgentRunner {
             callbacks.onToolCall?.(part.name, part.input)
           }
         }
+        // Turn closed: the next assistant turn streams a fresh text block.
+        streamedText = ''
         return
       }
       if (type === 'user') {

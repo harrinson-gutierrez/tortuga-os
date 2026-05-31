@@ -14,6 +14,7 @@ import type {
   CloseAgentRunSucceededArgs,
   CloseAgentRunUnsuccessfulArgs,
   CreateAgentRunArgs,
+  CreateDesignFrameArgs,
   CreateEvidenceArgs,
   CreateExpenseArgs,
   CreateGateArgs,
@@ -28,6 +29,7 @@ import type {
   CreateSecretArgs,
   CreateTaskArgs,
   CreateTroubleshootReportArgs,
+  DesignFrameRow,
   DiscoveryConversationRow,
   DiscoveryMessageRow,
   EvidenceRow,
@@ -37,6 +39,7 @@ import type {
   IterationRow,
   KitTemplateRow,
   LogWorkEntryArgs,
+  PatchDesignFrameArgs,
   PatchExpenseArgs,
   PatchKitTemplateArgs,
   PatchProjectEnvArgs,
@@ -63,6 +66,8 @@ import type {
   StepAckRow,
   Storage,
   StoryRow,
+  TaskConversationRow,
+  TaskMessageRow,
   TaskRow,
   TroubleshootReportRow,
   UpdateTaskStatusArgs,
@@ -81,6 +86,7 @@ import type { Db } from './client'
 import {
   agentRuns,
   clients,
+  designFrames,
   discoveryConversations,
   discoveryMessages,
   evidence,
@@ -103,6 +109,8 @@ import {
   secrets,
   stepAcks,
   stories,
+  taskConversations,
+  taskMessages,
   tasks,
   troubleshootReports,
   workEntries,
@@ -898,8 +906,9 @@ export function createSqliteStorage(db: Db): Storage {
     async createAgentRun(args: CreateAgentRunArgs) {
       await db.insert(agentRuns).values({
         id: args.id,
-        taskId: args.taskId,
-        iterationId: args.iterationId,
+        taskId: args.taskId ?? null,
+        iterationId: args.iterationId ?? null,
+        projectId: args.projectId ?? null,
         agentKind: args.agentKind,
         provider: args.provider,
         model: args.model,
@@ -938,10 +947,33 @@ export function createSqliteStorage(db: Db): Storage {
     async closeAgentRunSucceeded(args: CloseAgentRunSucceededArgs) {
       const run = await db.select().from(agentRuns).where(eq(agentRuns.id, args.runId)).get()
       if (!run) throw new Error(`agent_run ${args.runId} not found at close`)
+
+      // Project-scoped runs (design/frame-assigner) have no task/iteration, so
+      // they don't log work entries or evidence against a build task — they
+      // just flip the run to succeeded with its output + metrics.
+      const isProjectScoped = run.taskId === null
+      if (isProjectScoped) {
+        await db
+          .update(agentRuns)
+          .set({
+            status: 'succeeded',
+            output: args.output,
+            tokensIn: args.tokensIn,
+            tokensOut: args.tokensOut,
+            costCents: args.costCents,
+            startedAt: args.startedAt,
+            closedAt: args.closedAt,
+            updatedAt: args.closedAt,
+          })
+          .where(eq(agentRuns.id, args.runId))
+        const projRow = await db.select().from(agentRuns).where(eq(agentRuns.id, args.runId)).get()
+        return projRow as AgentRunRow
+      }
+
       const task = await db
         .select({ actualHoursMin: tasks.actualHoursMin })
         .from(tasks)
-        .where(eq(tasks.id, run.taskId))
+        .where(eq(tasks.id, run.taskId as string))
         .get()
       if (!task) throw new Error(`task ${run.taskId} not found at close`)
 
@@ -952,8 +984,8 @@ export function createSqliteStorage(db: Db): Storage {
         tx.insert(evidence)
           .values({
             id: args.evidenceId,
-            taskId: run.taskId,
-            iterationId: run.iterationId,
+            taskId: run.taskId as string,
+            iterationId: run.iterationId as string,
             type: 'dev',
             kind: 'gate_output',
             path: args.evidencePath,
@@ -968,8 +1000,8 @@ export function createSqliteStorage(db: Db): Storage {
         tx.insert(workEntries)
           .values({
             id: args.workEntryId,
-            iterationId: run.iterationId,
-            taskId: run.taskId,
+            iterationId: run.iterationId as string,
+            taskId: run.taskId as string,
             personId: args.botPersonId,
             role: run.agentKind === 'qa' ? 'qa' : 'dev',
             minutes,
@@ -986,7 +1018,7 @@ export function createSqliteStorage(db: Db): Storage {
             actualHoursMin: task.actualHoursMin + minutes,
             updatedAt: args.closedAt,
           })
-          .where(eq(tasks.id, run.taskId))
+          .where(eq(tasks.id, run.taskId as string))
           .run()
 
         tx.update(agentRuns)
@@ -1024,6 +1056,15 @@ export function createSqliteStorage(db: Db): Storage {
           closedAt: args.closedAt,
           updatedAt: args.closedAt,
         })
+        .where(eq(agentRuns.id, args.runId))
+      const row = await db.select().from(agentRuns).where(eq(agentRuns.id, args.runId)).get()
+      return row as AgentRunRow
+    },
+
+    async markAgentRunFailed(args) {
+      await db
+        .update(agentRuns)
+        .set({ status: 'failed', errorMessage: args.errorMessage, updatedAt: args.now })
         .where(eq(agentRuns.id, args.runId))
       const row = await db.select().from(agentRuns).where(eq(agentRuns.id, args.runId)).get()
       return row as AgentRunRow
@@ -1188,6 +1229,154 @@ export function createSqliteStorage(db: Db): Storage {
         .where(eq(discoveryConversations.id, args.conversationId))
         .get()
       return row as DiscoveryConversationRow
+    },
+
+    async getTaskConversationById(id) {
+      const row = await db
+        .select()
+        .from(taskConversations)
+        .where(eq(taskConversations.id, id))
+        .get()
+      return (row as TaskConversationRow | undefined) ?? null
+    },
+
+    async getActiveTaskConversationForTask(taskId) {
+      // A task has at most one live conversation; resume the most recent
+      // non-archived one. Archived conversations are finished — a new one
+      // can be started afterwards.
+      const row = await db
+        .select()
+        .from(taskConversations)
+        .where(and(eq(taskConversations.taskId, taskId), ne(taskConversations.status, 'archived')))
+        .orderBy(desc(taskConversations.createdAt))
+        .get()
+      return (row as TaskConversationRow | undefined) ?? null
+    },
+
+    async createTaskConversation(args) {
+      await db
+        .insert(taskConversations)
+        .values({
+          id: args.id,
+          taskId: args.taskId,
+          status: 'active',
+          provider: args.provider,
+          cliSessionId: null,
+          phase: 'planning',
+          createdAt: args.now,
+          updatedAt: args.now,
+        })
+        .run()
+      const row = await db
+        .select()
+        .from(taskConversations)
+        .where(eq(taskConversations.id, args.id))
+        .get()
+      return row as TaskConversationRow
+    },
+
+    async listTaskMessages(conversationId) {
+      return db
+        .select()
+        .from(taskMessages)
+        .where(eq(taskMessages.conversationId, conversationId))
+        .orderBy(asc(taskMessages.createdAt))
+        .all() as TaskMessageRow[]
+    },
+
+    async appendTaskMessage(args) {
+      await db
+        .insert(taskMessages)
+        .values({
+          id: args.id,
+          conversationId: args.conversationId,
+          role: args.role,
+          content: args.content,
+          agentRunId: args.agentRunId ?? null,
+          phase: args.phase ?? null,
+          model: args.model ?? null,
+          tokensIn: args.tokensIn ?? 0,
+          tokensOut: args.tokensOut ?? 0,
+          costCents: args.costCents ?? 0,
+          createdAt: args.now,
+          updatedAt: args.now,
+        })
+        .run()
+      const row = await db.select().from(taskMessages).where(eq(taskMessages.id, args.id)).get()
+      return row as TaskMessageRow
+    },
+
+    async getTaskMessageByAgentRunId(agentRunId) {
+      const row = await db
+        .select()
+        .from(taskMessages)
+        .where(eq(taskMessages.agentRunId, agentRunId))
+        .get()
+      return (row as TaskMessageRow | undefined) ?? null
+    },
+
+    async updateTaskMessage(args) {
+      const set: Record<string, unknown> = { updatedAt: args.now }
+      if (args.content !== undefined) set.content = args.content
+      if (args.model !== undefined) set.model = args.model
+      if (args.tokensIn !== undefined) set.tokensIn = args.tokensIn
+      if (args.tokensOut !== undefined) set.tokensOut = args.tokensOut
+      if (args.costCents !== undefined) set.costCents = args.costCents
+      await db.update(taskMessages).set(set).where(eq(taskMessages.id, args.id)).run()
+      const row = await db.select().from(taskMessages).where(eq(taskMessages.id, args.id)).get()
+      return row as TaskMessageRow
+    },
+
+    async setTaskConversationPhase(args) {
+      await db
+        .update(taskConversations)
+        .set({ phase: args.phase, updatedAt: args.now })
+        .where(eq(taskConversations.id, args.id))
+        .run()
+      const row = await db
+        .select()
+        .from(taskConversations)
+        .where(eq(taskConversations.id, args.id))
+        .get()
+      return row as TaskConversationRow
+    },
+
+    async setTaskConversationCliSessionId(args) {
+      await db
+        .update(taskConversations)
+        .set({ cliSessionId: args.cliSessionId, updatedAt: args.now })
+        .where(eq(taskConversations.id, args.id))
+        .run()
+      const row = await db
+        .select()
+        .from(taskConversations)
+        .where(eq(taskConversations.id, args.id))
+        .get()
+      return row as TaskConversationRow
+    },
+
+    async archiveTaskConversation(args) {
+      await db
+        .update(taskConversations)
+        .set({ status: 'archived', updatedAt: args.now })
+        .where(eq(taskConversations.id, args.id))
+        .run()
+      const row = await db
+        .select()
+        .from(taskConversations)
+        .where(eq(taskConversations.id, args.id))
+        .get()
+      return row as TaskConversationRow
+    },
+
+    async setTaskExecutionMode(args) {
+      await db
+        .update(tasks)
+        .set({ executionMode: args.mode, updatedAt: args.now })
+        .where(eq(tasks.id, args.taskId))
+        .run()
+      const row = await db.select().from(tasks).where(eq(tasks.id, args.taskId)).get()
+      return row as TaskRow
     },
 
     async listQuoteModulesForProject(projectId: string) {
@@ -1448,6 +1637,80 @@ export function createSqliteStorage(db: Db): Storage {
         .run()
     },
 
+    async listDesignFramesForProject(projectId) {
+      return db
+        .select()
+        .from(designFrames)
+        .where(and(eq(designFrames.projectId, projectId), isNull(designFrames.deletedAt)))
+        .orderBy(asc(designFrames.createdAt))
+        .all() as DesignFrameRow[]
+    },
+
+    async listDesignFramesForStory(storyId) {
+      return db
+        .select()
+        .from(designFrames)
+        .where(and(eq(designFrames.storyId, storyId), isNull(designFrames.deletedAt)))
+        .orderBy(asc(designFrames.createdAt))
+        .all() as DesignFrameRow[]
+    },
+
+    async getDesignFrameById(id) {
+      const row = await db
+        .select()
+        .from(designFrames)
+        .where(and(eq(designFrames.id, id), isNull(designFrames.deletedAt)))
+        .get()
+      return (row ?? null) as DesignFrameRow | null
+    },
+
+    async createDesignFrame(args: CreateDesignFrameArgs) {
+      await db
+        .insert(designFrames)
+        .values({
+          id: args.id,
+          projectId: args.projectId,
+          storyId: args.storyId,
+          figmaFileKey: args.figmaFileKey,
+          figmaNodeId: args.figmaNodeId,
+          name: args.name,
+          tokensJson: args.tokensJson,
+          baselineScreenshotPath: args.baselineScreenshotPath,
+          status: args.status,
+          fidelityPct: args.fidelityPct,
+          createdAt: args.now,
+          updatedAt: args.now,
+        })
+        .run()
+      const row = await db.select().from(designFrames).where(eq(designFrames.id, args.id)).get()
+      if (!row) throw new Error(`design_frame ${args.id} not found after insert`)
+      return row as DesignFrameRow
+    },
+
+    async patchDesignFrame(args: PatchDesignFrameArgs) {
+      const updates: Record<string, unknown> = { updatedAt: args.now }
+      if (args.patch.storyId !== undefined) updates.storyId = args.patch.storyId
+      if (args.patch.name !== undefined) updates.name = args.patch.name
+      if (args.patch.tokensJson !== undefined) updates.tokensJson = args.patch.tokensJson
+      if (args.patch.baselineScreenshotPath !== undefined) {
+        updates.baselineScreenshotPath = args.patch.baselineScreenshotPath
+      }
+      if (args.patch.status !== undefined) updates.status = args.patch.status
+      if (args.patch.fidelityPct !== undefined) updates.fidelityPct = args.patch.fidelityPct
+      await db.update(designFrames).set(updates).where(eq(designFrames.id, args.id)).run()
+      const row = await db.select().from(designFrames).where(eq(designFrames.id, args.id)).get()
+      if (!row) throw new Error(`design_frame ${args.id} not found after patch`)
+      return row as DesignFrameRow
+    },
+
+    async softDeleteDesignFrame(id, now) {
+      await db
+        .update(designFrames)
+        .set({ deletedAt: now, updatedAt: now })
+        .where(eq(designFrames.id, id))
+        .run()
+    },
+
     async listExpensesForProject(projectId: string) {
       return db
         .select()
@@ -1516,6 +1779,27 @@ export function createSqliteStorage(db: Db): Storage {
         .where(and(eq(expenses.projectId, projectId), isNull(expenses.deletedAt)))
         .all()) as Array<{ amount: number }>
       return rows.reduce((acc, r) => acc + r.amount, 0)
+    },
+
+    async sumAgentRunCostForProject(projectId: string) {
+      // agent_runs → tasks → stories → quotes → phases (project_id).
+      const row = (await db
+        .select({
+          costCents: sql<number>`COALESCE(SUM(${agentRuns.costCents}), 0)`,
+          tokensIn: sql<number>`COALESCE(SUM(${agentRuns.tokensIn}), 0)`,
+          tokensOut: sql<number>`COALESCE(SUM(${agentRuns.tokensOut}), 0)`,
+          runCount: sql<number>`COUNT(${agentRuns.id})`,
+        })
+        .from(agentRuns)
+        .innerJoin(tasks, eq(agentRuns.taskId, tasks.id))
+        .innerJoin(stories, eq(tasks.storyId, stories.id))
+        .innerJoin(quotes, eq(stories.quoteId, quotes.id))
+        .innerJoin(phases, eq(quotes.phaseId, phases.id))
+        .where(eq(phases.projectId, projectId))
+        .get()) as
+        | { costCents: number; tokensIn: number; tokensOut: number; runCount: number }
+        | undefined
+      return row ?? { costCents: 0, tokensIn: 0, tokensOut: 0, runCount: 0 }
     },
 
     async listSecretsForProject(projectId: string) {

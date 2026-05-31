@@ -77,6 +77,21 @@ export const TASK_STATUSES = [
 ] as const
 export type TaskStatus = (typeof TASK_STATUSES)[number]
 
+export const TASK_EXECUTION_MODES = ['coworker', 'manual'] as const
+export type TaskExecutionMode = (typeof TASK_EXECUTION_MODES)[number]
+
+export const TASK_COWORKER_PHASES = [
+  'planning',
+  'construction',
+  'execution',
+  'validation',
+  'delivery',
+] as const
+export type TaskCoworkerPhase = (typeof TASK_COWORKER_PHASES)[number]
+
+export const TASK_CONVERSATION_STATUSES = ['active', 'archived'] as const
+export type TaskConversationStatus = (typeof TASK_CONVERSATION_STATUSES)[number]
+
 export const ITERATION_OUTCOMES = ['approved', 'rejected', 'rework_requested', 'reopened'] as const
 export type IterationOutcome = (typeof ITERATION_OUTCOMES)[number]
 
@@ -129,6 +144,9 @@ export const AGENT_KINDS = [
   'dev-vite-react',
   'dev-node',
   'designer',
+  // Distributes the project's imported/generated Figma frames to their
+  // matching build stories (post-design hook, before build).
+  'frame-assigner',
   'qa',
   'tech_lead',
   'arch',
@@ -193,6 +211,14 @@ export type InboxKind = (typeof INBOX_KINDS)[number]
 
 export const PROJECT_ENVIRONMENTS = ['dev', 'staging', 'prod'] as const
 export type ProjectEnvironment = (typeof PROJECT_ENVIRONMENTS)[number]
+
+/**
+ * Lifecycle of a design frame in F3. `imported` = pulled from an existing
+ * Figma file; `generated` = created from intent by the designer agent;
+ * `approved` = the client signed off on this frame (F3 exit gate per-frame).
+ */
+export const DESIGN_FRAME_STATUSES = ['imported', 'generated', 'approved'] as const
+export type DesignFrameStatus = (typeof DESIGN_FRAME_STATUSES)[number]
 
 /** Maps a Phase to the role accountable for closing it. PHASES.md §1-§7. */
 export const PHASE_OWNER_ROLE: Record<PhaseType, Role> = {

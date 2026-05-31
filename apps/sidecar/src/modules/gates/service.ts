@@ -5,6 +5,7 @@ import { useCases } from '@tortuga-os/core'
 import { coreDeps, unwrap } from '../../shared/core-deps'
 import { logger } from '../../shared/logger'
 import { workspacePathFor } from '../workspace/use-cases'
+import { runFidelityForStory } from './fidelity-step'
 import { type GateExecution, type GateStack, executeGate } from './runner'
 
 export interface RunGatesResult {
@@ -82,6 +83,30 @@ async function runGatesForTaskInner(
     }
 
     const exec = await executeGate(gateType, stack, workspace, task.code, iteration.n)
+
+    // G5 has two halves: the golden-host check (the executeGate command,
+    // fast pre-check) and the authoritative Figma-fidelity check (device
+    // screenshot vs the imported Figma baseline). The device check can
+    // only downgrade the gate — a host pass with a >fail% pixel diff is a
+    // FAIL ("must look exactly like the design"). A warning-band diff
+    // keeps the gate passed but surfaces the % on the design frame.
+    if (gateType === 'G5_FIDELITY' && exec.status !== 'skipped') {
+      const fidelity = await runFidelityForStory(deps, {
+        storyId: task.storyId,
+        workspace,
+        taskCode: task.code,
+        iterationN: iteration.n,
+      })
+      if (fidelity.verdict === 'failed') {
+        exec.status = 'failed'
+        exec.reason = `figma fidelity ${fidelity.diffPct?.toFixed(1)}% > fail threshold`
+        if (fidelity.diffImageRel) exec.outputPath = fidelity.diffImageRel
+      } else if (fidelity.verdict === 'warning' && fidelity.diffImageRel) {
+        exec.reason = `figma fidelity ${fidelity.diffPct?.toFixed(1)}% (warning band)`
+        exec.outputPath = fidelity.diffImageRel
+      }
+    }
+
     executions.push(exec)
     const updated = unwrap(
       await useCases.gates.recordGateOutcome(deps, gate.id, {

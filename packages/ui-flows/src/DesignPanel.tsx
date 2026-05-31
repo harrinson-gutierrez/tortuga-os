@@ -1,0 +1,462 @@
+import type { ApiClient } from '@tortuga-os/api-client'
+import type { DesignFrameDTO, DesignTokens, StoryDTO } from '@tortuga-os/contracts'
+import { Badge, Button, Card, Eyebrow, TextField } from '@tortuga-os/ui'
+import { useRef, useState } from 'react'
+import { CoworkerLiveView } from './ScaffoldPanel'
+import { useAsyncData } from './useAsyncData'
+
+export interface DesignPanelProps {
+  client: ApiClient
+  projectCode: string
+  stories: StoryDTO[]
+}
+
+/** Map the stored fidelity % onto the double-threshold color/label. */
+function fidelityTone(pct: number | null): {
+  tone: 'turtle' | 'warning' | 'danger' | 'neutral'
+  label: string
+} {
+  if (pct === null) return { tone: 'neutral', label: 'sin medir' }
+  if (pct < 2) return { tone: 'turtle', label: `${pct}% · fiel` }
+  if (pct <= 8) return { tone: 'warning', label: `${pct}% · revisar` }
+  return { tone: 'danger', label: `${pct}% · no coincide` }
+}
+
+/** Build stories only (exclude the synthetic -000 / -000-DESIGN holders). */
+function isBuildStory(code: string): boolean {
+  return !code.endsWith('-000') && !code.endsWith('-000-DESIGN')
+}
+
+/**
+ * F3 design surface at the PROJECT level: import one Figma (the whole
+ * product) or generate it from intent. Frames land in a pool and the
+ * frame-assigner distributes them to build stories; the operator can
+ * reassign any frame manually. Each frame shows its baseline preview and
+ * the latest pixel-fidelity score against the implemented screen.
+ */
+export function DesignPanel({ client, projectCode, stories }: DesignPanelProps) {
+  const [figmaUrl, setFigmaUrl] = useState('')
+  const [intent, setIntent] = useState('')
+  const [styleIntent, setStyleIntent] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [activeRunId, setActiveRunId] = useState<string | null>(null)
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const framesBeforeRunRef = useRef(0)
+
+  const { data: frames } = useAsyncData(
+    () => client.designFrames.listForProject(projectCode),
+    [client, projectCode, refreshKey],
+  )
+
+  // Pre-flight: the designer can only read/write Figma through the project's
+  // Figma MCP. If it isn't installed + enabled, the run would fail silently,
+  // so we block import/generate and point the operator to the MCP panel.
+  const { data: mcps } = useAsyncData(
+    () => client.projectMcps.listForProject(projectCode),
+    [client, projectCode, refreshKey],
+  )
+  const figmaReady = (mcps ?? []).some(
+    (m) => m.enabled && (m.presetId === 'figma' || m.name === 'figma'),
+  )
+
+  const buildStories = stories.filter((s) => isBuildStory(s.code))
+  const storyById = new Map(stories.map((s) => [s.id, s]))
+  const pool = (frames ?? []).filter((f) => f.storyId === null)
+  const assigned = (frames ?? []).filter((f) => f.storyId !== null)
+
+  async function runImport() {
+    if (!figmaUrl.trim()) {
+      setError('Pega un link de Figma del proyecto')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    setResult(null)
+    framesBeforeRunRef.current = frames?.length ?? 0
+    try {
+      const { runId } = await client.designFrames.import({ projectCode, figmaUrl: figmaUrl.trim() })
+      setFigmaUrl('')
+      setActiveRunId(runId)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function runGenerate() {
+    setBusy(true)
+    setError(null)
+    setResult(null)
+    framesBeforeRunRef.current = frames?.length ?? 0
+    try {
+      const trimmed = intent.trim()
+      const { runId } = await client.designFrames.generate({
+        projectCode,
+        ...(trimmed ? { intent: trimmed } : {}),
+      })
+      setIntent('')
+      setActiveRunId(runId)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function runExploreStyle() {
+    setBusy(true)
+    setError(null)
+    setResult(null)
+    framesBeforeRunRef.current = frames?.length ?? 0
+    try {
+      const trimmed = styleIntent.trim()
+      const { runId } = await client.designFrames.exploreStyle({
+        projectCode,
+        ...(trimmed ? { intent: trimmed } : {}),
+      })
+      setStyleIntent('')
+      setActiveRunId(runId)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Called when the live view detects the run ended. The designer doesn't emit
+  // an "OK" marker, so we read the run's real status: a post-hook failure now
+  // degrades the run to `failed` with a reason on errorMessage, which we show
+  // verbatim instead of a generic "check the sidecar log". On success we also
+  // confirm frames actually landed.
+  async function onRunFinished() {
+    const finishedRunId = activeRunId
+    setActiveRunId(null)
+    try {
+      const run = finishedRunId ? await client.agentRuns.get(finishedRunId) : null
+      if (run && run.status === 'failed') {
+        setResult({
+          ok: false,
+          text: `✗ ${run.errorMessage ?? 'El run falló sin un motivo registrado.'}`,
+        })
+        setRefreshKey((k) => k + 1)
+        return
+      }
+      const after = await client.designFrames.listForProject(projectCode)
+      const delta = after.length - framesBeforeRunRef.current
+      setResult(
+        delta > 0
+          ? { ok: true, text: `✓ Diseño importado: ${delta} frame(s) nuevos.` }
+          : {
+              ok: false,
+              text: '✗ El run terminó sin frames nuevos. Revisa el output del agente arriba.',
+            },
+      )
+    } catch {
+      setResult({ ok: false, text: 'El run terminó pero no pude releer su estado.' })
+    }
+    setRefreshKey((k) => k + 1)
+  }
+
+  async function reassign(frame: DesignFrameDTO, storyId: string | null) {
+    setError(null)
+    try {
+      await client.designFrames.assign(frame.id, storyId)
+      setRefreshKey((k) => k + 1)
+    } catch (err) {
+      setError((err as Error).message)
+    }
+  }
+
+  async function approve(frame: DesignFrameDTO) {
+    setError(null)
+    try {
+      await client.designFrames.approve(frame.id)
+      setRefreshKey((k) => k + 1)
+    } catch (err) {
+      setError((err as Error).message)
+    }
+  }
+
+  function frameCard(f: DesignFrameDTO) {
+    const fid = fidelityTone(f.fidelityPct)
+    return (
+      <div key={f.id} className="rounded-md border border-border bg-bg/30 p-2">
+        {f.baselineScreenshotPath && (
+          <img
+            src={client.workspace.rawUrl(projectCode, f.baselineScreenshotPath)}
+            alt={f.name}
+            className="w-full rounded-sm border border-border mb-2 object-cover max-h-48"
+          />
+        )}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-[13px] font-medium truncate">{f.name}</span>
+          <Badge tone={f.status === 'approved' ? 'turtle' : 'neutral'} outline>
+            {f.status}
+          </Badge>
+        </div>
+        <div className="mt-1 flex items-center gap-2">
+          <Badge tone={fid.tone} outline>
+            {fid.label}
+          </Badge>
+          <span className="text-[10px] font-mono text-text-dim truncate">{f.figmaNodeId}</span>
+        </div>
+        <TokensSummary tokens={f.tokens} />
+        <div className="mt-2 flex items-center gap-2">
+          <select
+            className="flex-1 bg-bg border border-border rounded-md px-2 py-1 text-[12px] text-text focus:outline-none focus:border-brand"
+            value={f.storyId ?? ''}
+            onChange={(e) => reassign(f, e.target.value || null)}
+          >
+            <option value="">— Sin asignar (pool) —</option>
+            {buildStories.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.code} — {s.title}
+              </option>
+            ))}
+          </select>
+          {f.status !== 'approved' && (
+            <Button size="sm" variant="ghost" onClick={() => approve(f)} title="Aprobar diseño">
+              ✓
+            </Button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <Card>
+      <div>
+        <h3 className="font-display font-medium text-[18px] tracking-tighter-2 m-0">
+          Diseño del proyecto (F3) — Figma
+        </h3>
+        <div className="text-[12px] text-text-muted mt-1">
+          Primera tarea del proyecto, antes de arquitectura. Importa el Figma del proyecto entero o
+          genéralo desde una descripción: el agente diseñador trae cada pantalla, el repartidor la
+          asigna a su historia, y al programar el gate de fidelidad compara pixel a pixel contra ese
+          diseño.
+        </div>
+      </div>
+
+      {mcps && !figmaReady && (
+        <div className="mt-3 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-[12px] text-text">
+          Falta el <span className="font-medium">MCP de Figma</span> en este proyecto. Sin él, el
+          agente no puede leer ni crear en Figma. Instálalo en la pestaña{' '}
+          <span className="font-medium">Conexiones MCP</span> y vuelve aquí.
+        </div>
+      )}
+
+      {activeRunId && (
+        <div className="mt-4">
+          <Eyebrow>Agente diseñador trabajando…</Eyebrow>
+          <div className="mt-2">
+            <CoworkerLiveView client={client} runId={activeRunId} onFinished={onRunFinished} />
+          </div>
+        </div>
+      )}
+
+      {result && (
+        <div
+          className={`mt-3 rounded-md border px-3 py-2 text-[12px] ${
+            result.ok
+              ? 'border-turtle/40 bg-turtle/10 text-text'
+              : 'border-danger/40 bg-danger/10 text-text'
+          }`}
+        >
+          {result.text}
+        </div>
+      )}
+
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <div className="rounded-md border border-border bg-bg/30 p-3">
+          <Eyebrow>Importar Figma del proyecto</Eyebrow>
+          <div className="mt-2">
+            <TextField
+              label="Link de Figma"
+              placeholder="https://figma.com/design/KEY/... (todo el archivo)"
+              value={figmaUrl}
+              onChange={(e) => setFigmaUrl(e.target.value)}
+              disabled={busy || !figmaReady || !!activeRunId}
+            />
+          </div>
+          <div className="mt-2 flex justify-end">
+            <Button
+              size="sm"
+              variant="turtle"
+              onClick={runImport}
+              disabled={busy || !figmaReady || !!activeRunId}
+            >
+              {busy ? '…' : 'Importar'}
+            </Button>
+          </div>
+        </div>
+
+        <div className="rounded-md border border-border bg-bg/30 p-3">
+          <Eyebrow>Generar desde las historias</Eyebrow>
+          <div className="text-[11px] text-text-muted mt-1">
+            Diseña una pantalla por cada historia del proyecto. El texto de abajo es opcional:
+            añádelo solo para dar contexto extra (branding, tono).
+          </div>
+          <div className="mt-2">
+            <textarea
+              className="w-full bg-bg border border-border rounded-md px-3 py-2 text-[12px] text-text leading-snug min-h-[64px] focus:outline-none focus:border-brand"
+              placeholder="(Opcional) Contexto extra: branding Tuurt, tono, referencias visuales…"
+              value={intent}
+              onChange={(e) => setIntent(e.target.value)}
+              disabled={busy || !figmaReady || !!activeRunId}
+            />
+          </div>
+          <div className="mt-2 flex justify-end">
+            <Button
+              size="sm"
+              variant="turtle"
+              onClick={runGenerate}
+              disabled={busy || !figmaReady || !!activeRunId}
+            >
+              {busy ? '…' : 'Generar'}
+            </Button>
+          </div>
+        </div>
+
+        <div className="rounded-md border border-border bg-bg/30 p-3">
+          <Eyebrow>Explorar dirección visual</Eyebrow>
+          <div className="text-[11px] text-text-muted mt-1">
+            Propone 2-3 direcciones de estilo (una pantalla muestra cada una) para que elijas el
+            look antes de diseñar todas las pantallas. Las opciones caen al pool como "Style option
+            N".
+          </div>
+          <div className="mt-2">
+            <textarea
+              className="w-full bg-bg border border-border rounded-md px-3 py-2 text-[12px] text-text leading-snug min-h-[64px] focus:outline-none focus:border-brand"
+              placeholder="(Opcional) Pistas de estilo: minimalista, oscuro, editorial…"
+              value={styleIntent}
+              onChange={(e) => setStyleIntent(e.target.value)}
+              disabled={busy || !figmaReady || !!activeRunId}
+            />
+          </div>
+          <div className="mt-2 flex justify-end">
+            <Button
+              size="sm"
+              variant="turtle"
+              onClick={runExploreStyle}
+              disabled={busy || !figmaReady || !!activeRunId}
+            >
+              {busy ? '…' : 'Explorar'}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {error && <div className="mt-2 text-[12px] text-danger">{error}</div>}
+
+      <div className="mt-5 border-t border-border pt-3">
+        <div className="flex items-center justify-between">
+          <Eyebrow>Pool sin asignar ({pool.length})</Eyebrow>
+          <Button size="sm" variant="ghost" onClick={() => setRefreshKey((k) => k + 1)}>
+            ↻ Refrescar
+          </Button>
+        </div>
+        {frames && pool.length === 0 && (
+          <div className="text-[12px] text-text-muted py-2">
+            Nada en el pool. Importa un Figma o ya está todo repartido.
+          </div>
+        )}
+        <div className="mt-2 grid gap-2 md:grid-cols-2">{pool.map(frameCard)}</div>
+      </div>
+
+      <div className="mt-5 border-t border-border pt-3">
+        <Eyebrow>Asignados a historias ({assigned.length})</Eyebrow>
+        <div className="mt-2 space-y-3">
+          {buildStories.map((s) => {
+            const sframes = assigned.filter((f) => f.storyId === s.id)
+            if (sframes.length === 0) return null
+            return (
+              <div key={s.id}>
+                <div className="text-[11px] font-mono text-text-dim mb-1">
+                  {s.code} — {s.title}
+                </div>
+                <div className="grid gap-2 md:grid-cols-2">{sframes.map(frameCard)}</div>
+              </div>
+            )
+          })}
+          {assigned.some((f) => f.storyId && !storyById.has(f.storyId)) && (
+            <div className="text-[11px] text-text-muted">
+              Hay frames asignados a historias que ya no existen — reasígnalos desde el pool.
+            </div>
+          )}
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+/**
+ * Compact view of the tokens captured for a frame: count chips in the
+ * summary, full lists on expand. Shows the operator that the import cloned
+ * colors/typography/shadows/gradients/etc, not just the screenshot.
+ */
+function TokensSummary({ tokens }: { tokens: DesignTokens }) {
+  const counts: Array<[string, number]> = [
+    ['colores', tokens.colors?.length ?? 0],
+    ['tipografías', tokens.typography?.length ?? 0],
+    ['sombras', tokens.shadows?.length ?? 0],
+    ['gradientes', tokens.gradients?.length ?? 0],
+    ['bordes', tokens.borders?.length ?? 0],
+  ]
+  const total = counts.reduce((acc, [, n]) => acc + n, 0)
+  if (total === 0) {
+    return <div className="mt-1 text-[10px] text-text-dim">Sin tokens capturados aún</div>
+  }
+  return (
+    <details className="mt-1">
+      <summary className="cursor-pointer text-[10px] text-text-muted list-none flex flex-wrap gap-1">
+        {counts
+          .filter(([, n]) => n > 0)
+          .map(([label, n]) => (
+            <span key={label} className="rounded-sm bg-bg px-1.5 py-0.5 border border-border">
+              {n} {label}
+            </span>
+          ))}
+      </summary>
+      <div className="mt-1.5 space-y-1 text-[10px] font-mono text-text-soft">
+        {tokens.colors?.map((c) => (
+          <div key={`c:${c.name ?? ''}:${c.hex}`} className="flex items-center gap-1.5">
+            <span
+              className="inline-block w-3 h-3 rounded-sm border border-border"
+              style={{ backgroundColor: c.hex }}
+            />
+            {c.name ? `${c.name}: ` : ''}
+            {c.hex}
+            {c.opacity !== undefined && c.opacity < 1 ? ` @${Math.round(c.opacity * 100)}%` : ''}
+          </div>
+        ))}
+        {tokens.typography?.map((t) => (
+          <div key={`t:${t.name ?? ''}:${t.fontFamily ?? ''}:${t.fontSize ?? ''}`}>
+            {t.name ? `${t.name}: ` : ''}
+            {[t.fontFamily, t.fontSize && `${t.fontSize}px`, t.fontWeight]
+              .filter(Boolean)
+              .join(' ')}
+          </div>
+        ))}
+        {tokens.shadows?.map((s) => (
+          <div key={`s:${s.name ?? ''}:${s.x},${s.y},${s.blur}:${s.color}`}>
+            sombra {s.type}: {s.x},{s.y} blur {s.blur} · {s.color}
+          </div>
+        ))}
+        {tokens.gradients?.map((g) => (
+          <div key={`g:${g.name ?? ''}:${g.stops.map((st) => st.color).join(',')}`}>
+            gradiente {g.type}: {g.stops.map((st) => st.color).join(' → ')}
+          </div>
+        ))}
+        {tokens.borders?.map((b) => (
+          <div key={`b:${b.name ?? ''}:${b.width}:${b.color}`}>
+            borde: {b.width}px {b.color}
+          </div>
+        ))}
+      </div>
+    </details>
+  )
+}

@@ -77,3 +77,38 @@ export async function queueAgentRun(
   })
   return ucOk(agentRunDTO(row))
 }
+
+export interface QueueProjectAgentRunInput {
+  projectId: string
+  agentKind: CreateAgentRunInput['agentKind']
+  provider: CreateAgentRunInput['provider']
+  model?: string
+  systemPrompt: string
+  userPrompt: string
+}
+
+/**
+ * Queue a PROJECT-scoped agent run (design / frame-assigner) that has no place
+ * in the build backlog — it carries a projectId instead of a task + iteration.
+ * The worker resolves the workspace from the project directly and the close
+ * path skips work-entry/evidence creation.
+ */
+export async function queueProjectAgentRun(
+  { storage, newId, now }: CoreDeps,
+  input: QueueProjectAgentRunInput,
+): Promise<UseCaseResult<AgentRunDTO>> {
+  const project = await storage.getProjectById(input.projectId)
+  if (!project) return notFound('project', input.projectId)
+
+  const row = await storage.createAgentRun({
+    id: newId(),
+    projectId: input.projectId,
+    agentKind: input.agentKind,
+    provider: input.provider,
+    model: input.model ?? DEFAULT_MODEL_BY_PROVIDER[input.provider] ?? 'claude-opus-4-7',
+    systemPrompt: input.systemPrompt,
+    userPrompt: input.userPrompt,
+    now: now(),
+  })
+  return ucOk(agentRunDTO(row))
+}
