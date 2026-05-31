@@ -27,6 +27,6 @@
   "devDependencies": {
     "@tortuga-os/tsconfig": "workspace:*",
     "@types/better-sqlite3": "^7.6.12",
-    "drizzle-kit": "^0.28.1"
+    "drizzle-kit": "^0.31.10"
   }
 }
